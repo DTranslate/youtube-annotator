@@ -1,4 +1,5 @@
 import { App, Modal, Setting } from "obsidian";
+declare const app: App;
 
 export class PromptModal extends Modal {
 	constructor(
