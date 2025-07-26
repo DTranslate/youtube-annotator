@@ -1,24 +1,36 @@
 {
   "compilerOptions": {
-    "baseUrl": ".",
-    "inlineSourceMap": true,
-    "inlineSources": true,
+    "baseUrl": "./src",
+    "paths": {
+      "@view/*": ["view/*"],
+      "@modal/*": ["modal/*"],
+      "@constants": ["constants/constants"],
+      "@hotkeys/*": ["hotkeys/*"],
+      "@settings/*": ["settings/*"],
+      "@types/*": ["types/*"],
+      "@util/*": ["util/*"],
+      "@ui/*": ["ui/*"]
+    },
     "module": "ESNext",
     "target": "ES6",
+    "lib": ["DOM", "ES6"],
     "allowJs": true,
     "noImplicitAny": true,
+    "strictNullChecks": true,
     "moduleResolution": "node",
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
     "importHelpers": true,
     "isolatedModules": true,
-    "strictNullChecks": true,
-    "lib": [
-      "DOM",
-      "ES5",
-      "ES6",
-      "ES7"
-    ]
+    "inlineSourceMap": true,
+    "inlineSources": true
   },
-  "include": [
-    "**/*.ts"
+  "exclude": [
+    "node_modules",
+    "docs",
+    "esbuild.config.mjs",
+    "main.js",
+    "version-bump.mjs"
   ]
 }

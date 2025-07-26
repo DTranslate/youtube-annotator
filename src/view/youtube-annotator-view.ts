@@ -1,15 +1,15 @@
 // as part of a modular design - all playerview settings live here
 import { ItemView, WorkspaceLeaf } from "obsidian";
 
-export const VIEW_TYPE_YOUTUBE = "youtube-annotator-view"; 
+export const VIEW_TYPE_YOUTUBE_ANNOTATOR = "youtube-annotator-view"; 
 
-export class YoutubePlayerView extends ItemView {
+export class YoutubeAnnotatorView extends ItemView {
   constructor(leaf: WorkspaceLeaf) {
 	super(leaf);
   }
 
   getViewType(): string {
-	return VIEW_TYPE_YOUTUBE;
+	return VIEW_TYPE_YOUTUBE_ANNOTATOR;
   }
 
   getDisplayText(): string {

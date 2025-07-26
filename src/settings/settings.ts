@@ -13,10 +13,11 @@ export const DEFAULT_SETTINGS: YoutubeAnnotatorSettings = {
 };
 
 export class YoutubeAnnotatorSettingTab extends PluginSettingTab {
-  constructor(app: App, plugin: YoutubeAnnotatorPlugin) {
-    super(app, plugin);
-    this.plugin = plugin;
-  }
+	plugin: YoutubeAnnotatorPlugin;
+	constructor(app: App, plugin: YoutubeAnnotatorPlugin) {
+		super(app, plugin);
+		this.plugin = plugin;
+	}
 
   display(): void {
     const { containerEl } = this;
