@@ -1,38 +1,28 @@
+// as part of a modular design - all playerview settings live here
 import { ItemView, WorkspaceLeaf } from "obsidian";
 
-export const VIEW_TYPE_YOUTUBE_ANNOTATOR = "youtube-annotator-view";
+export const VIEW_TYPE_YOUTUBE = "youtube-annotator-view"; 
 
-export class YoutubeAnnotatorView extends ItemView {
-	constructor(leaf: WorkspaceLeaf) {
-		super(leaf);
-	}
+export class YoutubePlayerView extends ItemView {
+  constructor(leaf: WorkspaceLeaf) {
+	super(leaf);
+  }
 
-	getViewType(): string {
-		return VIEW_TYPE_YOUTUBE_ANNOTATOR;
-	}
+  getViewType(): string {
+	return VIEW_TYPE_YOUTUBE;
+  }
 
-	getDisplayText(): string {
-		return "YouTube Annotator";
-	}
+  getDisplayText(): string {
+	return "YouTube Annotator";
+  }
 
-	getIcon(): string {
-		return "video"; // Or any other Obsidian icon name you like
-	}
+  async onOpen() {
+	const container = this.containerEl.children[1];
+	container.empty();
+	container.createEl("h3", { text: "YouTube player will be here" });
+  }
 
-	async onOpen() {
-		const container = this.containerEl.children[1];
-		container.empty();
-
-		const header = container.createEl("h2", { text: "YouTube Annotation Panel" });
-		const placeholder = container.createEl("div", {
-			text: "Annotations will appear here.",
-			attr: { style: "margin-top: 1rem; color: var(--text-muted);" },
-		});
-
-		// Later, you can inject an annotation editor, transcript sync, etc.
-	}
-
-	async onClose() {
-		// Optional cleanup
-	}
+  async onClose() {
+	// Cleanup if needed
+  }
 }

@@ -1,6 +1,6 @@
 import { Plugin, WorkspaceLeaf } from "obsidian";
 import { YoutubePlayerView, VIEW_TYPE_YOUTUBE } from "./src/view/youtube-player-view";
-import { DEFAULT_SETTINGS, YoutubeAnnotatorSettings, YoutubeAnnotatorSettingTab } from "./settings/settings";
+import { DEFAULT_SETTINGS, YoutubeAnnotatorSettings, YoutubeAnnotatorSettingTab } from "./src/settings/settings";
 import { TranscriptModal } from "./src/modal/transcriptmodal";
 import { registerHotkeys } from "./src/hotkeys/hotkeys";
 import { YoutubeAnnotatorView, VIEW_TYPE_YOUTUBE_ANNOTATOR } from "./src/view/youtube-annotator-view";
