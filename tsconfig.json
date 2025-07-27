@@ -8,7 +8,8 @@
       "@hotkeys/*": ["hotkeys/*"],
       "@settings/*": ["settings/*"],
       "@types/*": ["types/*"],
-      "@util/*": ["util/*"],
+      "@util/*": ["src/utils/*"],
+      "@util": ["src/util"],
       "@ui/*": ["ui/*"]
     },
     "module": "ESNext",

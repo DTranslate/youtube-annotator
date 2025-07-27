@@ -1,7 +1,9 @@
 // as part of a modular design - all playerview settings live here
-import { ItemView, WorkspaceLeaf } from "obsidian";
+import { ItemView, View, WorkspaceLeaf } from "obsidian";
+import { getYouTubeEmbedUrl } from "../util/youtube-util";
 
-export const VIEW_TYPE_YOUTUBE_PLAYER = "youtube-annotator-view"; 
+
+export const VIEW_TYPE_YOUTUBE_PLAYER = "youtube-player-view"; 
 
 export class YoutubePlayerView extends ItemView {
   constructor(leaf: WorkspaceLeaf) {
@@ -13,14 +15,37 @@ export class YoutubePlayerView extends ItemView {
   }
 
   getDisplayText(): string {
-    return "YouTube Annotator";
+    return "YouTube Player";
   }
 
   async onOpen() {
-    const container = this.containerEl.children[1];
-    container.empty();
-    container.createEl("h3", { text: "YouTube player will be here" });
+  const container = this.containerEl.children[1];
+  container.empty();
+
+  const url = this.leaf.getViewState().state?.youtubeUrl;
+  if (typeof url !== "string") {
+  container.createEl("p", { text: "Invalid YouTube URL." });
+  return;
+}
+
+  const videoId = getYouTubeEmbedUrl(url);
+  if (!videoId) {
+    container.createEl("p", { text: "Invalid YouTube URL." });
+    return;
   }
+
+  const iframe = container.createEl("iframe", {
+    attr: {
+      width: "100%",
+      height: "400",
+      src: `https://www.youtube.com/embed/${videoId}`,
+      frameborder: "0",
+      allow: "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture",
+      allowfullscreen: "true",
+    },
+  });
+}
+
 
   async onClose() {
     // Cleanup if needed

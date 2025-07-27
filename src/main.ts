@@ -1,16 +1,25 @@
-import { Plugin, TFile, WorkspaceLeaf } from "obsidian";
-import { YoutubePlayerView, VIEW_TYPE_YOUTUBE_PLAYER } from "@view/youtube-player-view";
-import { YoutubeAnnotatorView,VIEW_TYPE_YOUTUBE_ANNOTATOR } from "@view/youtube-annotator-view";
-import { DEFAULT_SETTINGS, YoutubeAnnotatorSettings, YoutubeAnnotatorSettingTab } from "@settings/settings";
-import { TranscriptModal } from "@modal/transcriptmodal";
+import { Plugin, 
+          WorkspaceLeaf, 
+          MarkdownView, 
+          PluginSettingTab, 
+          Setting,
+          TFile,
+        } from "obsidian";
+
 import { registerHotkeys } from "@hotkeys/hotkeys";
 import { PromptModal } from "@modal/promptmodal";
+import { TranscriptModal } from "@modal/transcriptmodal";
+import { DEFAULT_SETTINGS, YoutubeAnnotatorSettings, YoutubeAnnotatorSettingTab } from "@settings/settings";
+import { VIEW_TYPE_YOUTUBE_ANNOTATOR, YoutubeAnnotatorView } from "@view/youtube-annotator-view";
+import { VIEW_TYPE_YOUTUBE_PLAYER, YoutubePlayerView } from "@view/youtube-player-view";
+import { getYouTubeEmbedUrl } from "./util/youtube-util";
+
 
 export default class YoutubeAnnotatorPlugin extends Plugin {
   settings: YoutubeAnnotatorSettings;
 
   async onload() {
-    console.log("YouTube Annotator plugin loading...");
+    //console.log(" Wait YouTube Annotator plugin loading ...");
     await this.loadSettings();
 
     // Register views only if not already registered
@@ -41,7 +50,7 @@ export default class YoutubeAnnotatorPlugin extends Plugin {
       },
     });
 
-    // Ribbon icon
+    // Ribbon icon to open YouTube Annotator where user can paste a URL
     this.addRibbonIcon("play-circle", "Open YouTube Annotator", async () => {
       const url = await this.promptForYoutubeUrl();
       if (!url) return;
@@ -62,10 +71,10 @@ export default class YoutubeAnnotatorPlugin extends Plugin {
   async openYoutubeSplitView(url: string) {
     const { workspace } = this.app;
 
-    // Get the currently active leaf and split it horizontally
+    // Get the currently active leaf and split it vertically
     const leftLeaf = workspace.getLeaf(false);
     workspace.setActiveLeaf(leftLeaf); // Ensure leftLeaf is active
-    const rightLeaf = workspace.splitActiveLeaf('horizontal');
+    const rightLeaf = workspace.splitActiveLeaf('vertical');
 
     // Left side: YouTube player
     await leftLeaf.setViewState({
@@ -76,25 +85,33 @@ export default class YoutubeAnnotatorPlugin extends Plugin {
 
     // Right side: Annotator note
     const file = await this.createAnnotatorNoteWithUrl(url);
-    await rightLeaf.openFile(file);
-  }
+    await rightLeaf.setViewState({
+      type: VIEW_TYPE_YOUTUBE_ANNOTATOR,
+      active: true,
+      state: { url },
+   });
+  } 
 
   async createAnnotatorNoteWithUrl(url: string): Promise<TFile> {
-    const folderPath = "YouTube Notes";
-    const fileName = `yt-annotation-${Date.now()}.md`;
-    const filePath = `${folderPath}/${fileName}`;
+	const folderPath = "YouTube Notes";
+	const fileName = `yt-annotation-${Date.now()}.md`;
+	const filePath = `${folderPath}/${fileName}`;
 
-    // Create folder if needed
-    if (!(await this.app.vault.adapter.exists(folderPath))) {
-      await this.app.vault.createFolder(folderPath);
-    }
+	// Extract YouTube video ID from any valid format
+	const videoId = getYouTubeEmbedUrl(url);
+	if (!videoId) throw new Error("Invalid YouTube URL");
 
-    const embedUrl = url.replace("watch?v=", "embed/");
-    const iframe = `<iframe width="100%" height="315" src="${embedUrl}" frameborder="0" allowfullscreen></iframe>\n\n`;
-    const content = `${iframe}## Your Notes\n\n`;
+	const embedUrl = `https://www.youtube.com/embed/${videoId}`;
+	const iframe = `<iframe width="100%" height="315" src="${embedUrl}" frameborder="0" allowfullscreen></iframe>\n\n`;
+	const content = `${iframe}## Your Notes\n\n`;
 
-    return await this.app.vault.create(filePath, content);
-  }
+	// Create folder if it doesn't exist
+	if (!(await this.app.vault.adapter.exists(folderPath))) {
+		await this.app.vault.createFolder(folderPath);
+	}
+
+	return await this.app.vault.create(filePath, content);
+}
 
   async promptForYoutubeUrl(): Promise<string | null> {
     return new Promise((resolve) => {
@@ -102,6 +119,7 @@ export default class YoutubeAnnotatorPlugin extends Plugin {
         resolve(result);
       }).open();
     });
+    
   }
 
   onunload() {
