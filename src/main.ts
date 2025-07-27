@@ -102,7 +102,7 @@ export default class YoutubeAnnotatorPlugin extends Plugin {
 	if (!videoId) throw new Error("Invalid YouTube URL");
 
 	const embedUrl = `https://www.youtube.com/embed/${videoId}`;
-	const iframe = `<iframe width="100%" height="315" src="${embedUrl}" frameborder="0" allowfullscreen></iframe>\n\n`;
+	const iframe = `<iframe width="100%" height="315" src="${embedUrl}" frameborder="0"></iframe>\n\n`;
 	const content = `${iframe}## Your Notes\n\n`;
 
 	// Create folder if it doesn't exist

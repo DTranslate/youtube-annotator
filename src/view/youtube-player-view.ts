@@ -24,13 +24,13 @@ export class YoutubePlayerView extends ItemView {
 
   const url = this.leaf.getViewState().state?.youtubeUrl;
   if (typeof url !== "string") {
-  container.createEl("p", { text: "Invalid YouTube URL." });
+  container.createEl("p", { text: "This is the left side screwup for url. " });
   return;
 }
 
   const videoId = getYouTubeEmbedUrl(url);
   if (!videoId) {
-    container.createEl("p", { text: "Invalid YouTube URL." });
+    container.createEl("p", { text: "This is the left side screwup for url for getYouTubeEmbedUrl " });
     return;
   }
 
@@ -43,6 +43,7 @@ export class YoutubePlayerView extends ItemView {
       allow: "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture",
       allowfullscreen: "true",
     },
+    
   });
 }
 
