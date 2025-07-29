@@ -4,11 +4,13 @@ import type YoutubeAnnotatorPlugin from "../main";
 export interface YoutubeAnnotatorSettings {
   enableTranscript: boolean;
   defaultPlaybackSpeed: number;
+  youtubeFolder: string;
 }
 
 export const DEFAULT_SETTINGS: YoutubeAnnotatorSettings = {
   enableTranscript: true,
   defaultPlaybackSpeed: 1.0,
+  youtubeFolder: "YouTube_Notes",  // Default fallback
 };
 
 export class YoutubeAnnotatorSettingTab extends PluginSettingTab {
@@ -47,5 +49,17 @@ export class YoutubeAnnotatorSettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
           })
       );
+
+
+    new Setting(containerEl)
+  .setName("YouTube Notes Folder")
+  .setDesc("Path to folder where YouTube notes will be saved.")
+  .addText(text => text
+    .setPlaceholder("YouTube_Notes")
+    .setValue(this.plugin.settings.youtubeFolder)
+    .onChange(async (value) => {
+      this.plugin.settings.youtubeFolder = value.trim();
+      await this.plugin.saveSettings();
+    }));
   }
 }

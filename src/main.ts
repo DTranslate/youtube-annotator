@@ -96,7 +96,8 @@ export default class YoutubeAnnotatorPlugin extends Plugin {
       return;
     }
 
-    const youtubefolder = "YouTube_Notes";
+    //const youtubefolder = "YouTube_Notes";
+	const youtubefolder = this.settings.youtubeFolder || "YouTube_Notes";
     const timestamp = Date.now();
     const fileName = `TY-Notes-${timestamp}.md`;
     const filePath = `${youtubefolder}/${fileName}`;
