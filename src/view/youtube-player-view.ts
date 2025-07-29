@@ -1,9 +1,8 @@
-// as part of a modular design - all playerview settings live here
-import { ItemView, View, WorkspaceLeaf } from "obsidian";
+import { ItemView, WorkspaceLeaf } from "obsidian";
 import { getYouTubeEmbedUrl } from "../util/youtube-util";
+import { PromptModal } from "@modal/promptmodal";
 
-
-export const VIEW_TYPE_YOUTUBE_PLAYER = "youtube-player-view"; 
+export const VIEW_TYPE_YOUTUBE_PLAYER = "youtube-player-view";
 
 export class YoutubePlayerView extends ItemView {
   constructor(leaf: WorkspaceLeaf) {
@@ -17,38 +16,46 @@ export class YoutubePlayerView extends ItemView {
   getDisplayText(): string {
     return "YouTube Player";
   }
-
+  
   async onOpen() {
-  const container = this.containerEl.children[1];
-  container.empty();
+    const state = this.getState();
+    const youtubeUrl = state.embedUrl;
+    // ✅ Log full view state to trace issue
+    const viewState = this.leaf.getViewState();
+    //console.log("[YoutubePlayerView] Full View State:", viewState);
+    //const youtubeUrl = viewState?.state?.youtubeUrl;
+    console.log("[YoutubePlayerView] Extracted youtubeUrl:",viewState, youtubeUrl);
 
-  const url = this.leaf.getViewState().state?.youtubeUrl;
-  if (typeof url !== "string") {
-  container.createEl("p", { text: "This is the left side screwup for url. " });
-  return;
-}
+    // ✅ Create a dedicated container for the view
+    const container = this.containerEl.createDiv({ cls: "youtube-player-container" });
 
-  const videoId = getYouTubeEmbedUrl(url);
-  if (!videoId) {
-    container.createEl("p", { text: "This is the left side screwup for url for getYouTubeEmbedUrl " });
-    return;
+    if (typeof youtubeUrl !== "string" || youtubeUrl.trim() === "") {
+      container.createEl("p", { text: "[❌] no valid url from youtube-player-view.ts." });
+      return;
+    }
+
+    const videoId = getYouTubeEmbedUrl(youtubeUrl);
+    console.log("[YoutubePlayerView] Parsed Video ID: & youtubeUrl", videoId, youtubeUrl);
+
+    if (!videoId) {
+      container.createEl("p", { text: "[❌] Could not parse YouTube Video ID." });
+      return;
+    }
+
+    container.createEl("iframe", {
+      attr: {
+        width: "100%",
+        height: "400",
+        src: `https://www.youtube.com/embed/${videoId}`,
+        frameborder: "0",
+        allow: "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture",
+        allowfullscreen: "true",
+      },
+    });
   }
 
-  const iframe = container.createEl("iframe", {
-    attr: {
-      width: "100%",
-      height: "400",
-      src: `https://www.youtube.com/embed/${videoId}`,
-      frameborder: "0",
-      allow: "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture",
-      allowfullscreen: "true",
-    },
-    
-  });
-}
-
-
   async onClose() {
-    // Cleanup if needed
+    // Cleanup logic if necessary
+    console.log("[YoutubePlayerView] View closed");
   }
 }

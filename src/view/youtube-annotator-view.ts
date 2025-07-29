@@ -1,11 +1,7 @@
-// as part of a modular design - all Annotatorview settings live here
-import { ItemView, View, WorkspaceLeaf } from "obsidian";
-// In youtube-annotator-view.ts
+import { ItemView, WorkspaceLeaf } from "obsidian";
 import { getYouTubeEmbedUrl } from "../util/youtube-util";
 
-
-
-export const VIEW_TYPE_YOUTUBE_ANNOTATOR = "youtube-annotator-view"; 
+export const VIEW_TYPE_YOUTUBE_ANNOTATOR = "youtube-annotator-view";
 
 export class YoutubeAnnotatorView extends ItemView {
   constructor(leaf: WorkspaceLeaf) {
@@ -21,35 +17,43 @@ export class YoutubeAnnotatorView extends ItemView {
   }
 
   async onOpen() {
-  const container = this.containerEl.children[1];
-  container.empty();
+    // ✅ Log full view state to trace issue
+    const viewState = this.leaf.getViewState();
+    console.log("[YoutubeAnnotatorView] Full View State:", viewState);
 
-  const url = this.leaf.getViewState().state?.youtubeUrl;
-  if (typeof url !== "string") {
-  container.createEl("p", { text: "Invalid YouTube URL." });
-  return;
-}
+    const youtubeUrl = viewState?.state?.youtubeUrl;
+    console.log("[YoutubeAnnotatorView] Extracted youtubeUrl:", youtubeUrl);
 
-  const videoId = getYouTubeEmbedUrl(url);
-  if (!videoId) {
-    container.createEl("p", { text: "Invalid YouTube URL." });
-    return;
+    // ✅ Create a dedicated container for the view
+    const container = this.containerEl.createDiv({ cls: "youtube-Annotator-container" });
+
+    if (typeof youtubeUrl !== "string" || youtubeUrl.trim() === "") {
+      container.createEl("p", { text: "[❌] No valid YouTube URL provided." });
+      return;
+    }
+
+    const videoId = getYouTubeEmbedUrl(youtubeUrl);
+    console.log("[YoutubeAnnotatorView] Parsed Video ID:", videoId);
+
+    if (!videoId) {
+      container.createEl("p", { text: "[❌] Could not parse YouTube Video ID." });
+      return;
+    }
+
+    container.createEl("iframe", {
+      attr: {
+        width: "100%",
+        height: "400",
+        src: `https://www.youtube.com/embed/${videoId}`,
+        frameborder: "0",
+        allow: "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture",
+        allowfullscreen: "true",
+      },
+    });
   }
 
-  const iframe = container.createEl("iframe", {
-    attr: {
-      width: "100%",
-      height: "400",
-      src: `https://www.youtube.com/embed/${videoId}`,
-      frameborder: "0",
-      allow: "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture",
-      allowfullscreen: "true",
-    },
-  });
-}
-
-
   async onClose() {
-    // Cleanup if needed
+    // Cleanup logic if necessary
+    console.log("[YoutubeAnnotatorView] View closed");
   }
 }

@@ -14,7 +14,6 @@ import { VIEW_TYPE_YOUTUBE_ANNOTATOR, YoutubeAnnotatorView } from "@view/youtube
 import { VIEW_TYPE_YOUTUBE_PLAYER, YoutubePlayerView } from "@view/youtube-player-view";
 import { getYouTubeEmbedUrl } from "./util/youtube-util";
 
-
 export default class YoutubeAnnotatorPlugin extends Plugin {
   settings: YoutubeAnnotatorSettings;
 
@@ -44,17 +43,18 @@ export default class YoutubeAnnotatorPlugin extends Plugin {
       id: "open-youtube-annotator-split",
       name: "Open YouTube Annotator with URL",
       callback: async () => {
-        const url = await this.promptForYoutubeUrl();
-        if (!url) return;
-        await this.openYoutubeSplitView(url);
+        const youtubeUrl = await this.promptForYoutubeUrl();
+        if (!youtubeUrl) return;
+        await this.openYoutubeSplitView(youtubeUrl);
       },
+      
     });
 
     // Ribbon icon to open YouTube Annotator where user can paste a URL
     this.addRibbonIcon("play-circle", "Open YouTube Annotator", async () => {
-      const url = await this.promptForYoutubeUrl();
-      if (!url) return;
-      await this.openYoutubeSplitView(url);
+      const youtubeUrl = await this.promptForYoutubeUrl();
+      if (!youtubeUrl) return;
+      await this.openYoutubeSplitView(youtubeUrl);
     });
 
     // Transcript modal
@@ -80,7 +80,7 @@ export default class YoutubeAnnotatorPlugin extends Plugin {
     await leftLeaf.setViewState({
       type: VIEW_TYPE_YOUTUBE_PLAYER,
       active: true,
-      state: { url },
+      state: { embedUrl : url },
     });
 
     // Right side: Annotator note
@@ -88,23 +88,22 @@ export default class YoutubeAnnotatorPlugin extends Plugin {
     await rightLeaf.setViewState({
       type: VIEW_TYPE_YOUTUBE_ANNOTATOR,
       active: true,
-      state: { url },
+      state: { embedUrl : url  },
    });
   } 
 
   async createAnnotatorNoteWithUrl(url: string): Promise<TFile> {
 	const folderPath = "YouTube Notes";
 	const fileName = `yt-annotation-${Date.now()}.md`;
-	const filePath = `${folderPath}/${fileName}`;
-
+	const filePath = `${folderPath}/${fileName}`; 
 	// Extract YouTube video ID from any valid format
-	const videoId = getYouTubeEmbedUrl(url);
-	if (!videoId) throw new Error("Invalid YouTube URL");
+	const embedUrl = getYouTubeEmbedUrl(url);
+	if (!embedUrl) throw new Error("Invalid YouTube URL");
 
-	const embedUrl = `https://www.youtube.com/embed/${videoId}`;
+	//const embedUrl = `https://www.youtube.com/embed/${videoId}`;
 	const iframe = `<iframe width="100%" height="315" src="${embedUrl}" frameborder="0"></iframe>\n\n`;
 	const content = `${iframe}## Your Notes\n\n`;
-
+  console.log("this is the url varibale from main.ts", embedUrl);  
 	// Create folder if it doesn't exist
 	if (!(await this.app.vault.adapter.exists(folderPath))) {
 		await this.app.vault.createFolder(folderPath);
@@ -121,7 +120,7 @@ export default class YoutubeAnnotatorPlugin extends Plugin {
     });
     
   }
-
+  
   onunload() {
     this.app.workspace.detachLeavesOfType(VIEW_TYPE_YOUTUBE_PLAYER);
     this.app.workspace.detachLeavesOfType(VIEW_TYPE_YOUTUBE_ANNOTATOR);

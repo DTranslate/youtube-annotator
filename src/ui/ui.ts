@@ -5,4 +5,3 @@ export function createTimestampButton(onClick: () => void): HTMLElement {
   button.addEventListener("click", onClick);
   return button;
 }
-
