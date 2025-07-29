@@ -18,6 +18,9 @@ import {
 import { getYouTubeEmbedUrl } from "./utils/youtube-utils";
 import { YoutubeUrlModal } from "./modals/promptmodal";
 import { YouTubeAnnotator, YOUTUBE_VIEW_TYPE } from "./view/youtube-annotator-view";
+import { generateDateTimestamp, DateTimestampFormat } from "./utils/date-timestamp";
+
+
 
 export default class YoutubeAnnotatorPlugin extends Plugin {
   settings: YoutubeAnnotatorSettings;
@@ -98,23 +101,20 @@ export default class YoutubeAnnotatorPlugin extends Plugin {
 
     //const youtubefolder = "YouTube_Notes";
 	const youtubefolder = this.settings.youtubeFolder || "YouTube_Notes";
-    const timestamp = Date.now();
-    const fileName = `TY-Notes-${timestamp}.md`;
+    const timestamp = generateDateTimestamp(this.settings.DateTimestampFormat);
+	const fileName = `YT-Notes-${timestamp}.md`;
     const filePath = `${youtubefolder}/${fileName}`;
 
     if (!(await this.app.vault.adapter.exists(youtubefolder))) {
       await this.app.vault.createFolder(youtubefolder);
     }
 
-    const content = `
-[Watch on YouTube](${url})
-
+    const content = `[Watch on YouTube](${url})
 <iframe width="100%" height="360" src="${embedUrl}" frameborder="0" allowfullscreen></iframe>
 ---
-## Notes Below
+## Notes:-
 `;
-
-    const file = await this.app.vault.create(filePath, content);
-    await this.app.workspace.getLeaf(true).openFile(file);
+const file = await this.app.vault.create(filePath, content);
+await this.app.workspace.getLeaf(true).openFile(file);
   }
 }
