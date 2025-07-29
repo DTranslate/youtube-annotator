@@ -1,5 +1,5 @@
 // as part of a modular design - all annotation timestamp settings will live here
-import { PromptModal } from "@modal/promptmodal";
+import{ YoutubeUrlModal } from "modals/promptmodal";
 
 
 export function formatTimestamp(seconds: number): string {

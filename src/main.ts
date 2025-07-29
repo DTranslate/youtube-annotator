@@ -1,129 +1,66 @@
-import { Plugin, 
-          WorkspaceLeaf, 
-          MarkdownView, 
-          PluginSettingTab, 
-          Setting,
-          TFile,
-        } from "obsidian";
+// main.ts — YouTube Annotator Plugin Entry Point
+import {
+  Plugin,
+  WorkspaceLeaf,
+  MarkdownView,
+  PluginSettingTab,
+  Setting,
+  TFile,
+  Notice,
+} from "obsidian";
 
-import { registerHotkeys } from "@hotkeys/hotkeys";
-import { PromptModal } from "@modal/promptmodal";
-import { TranscriptModal } from "@modal/transcriptmodal";
-import { DEFAULT_SETTINGS, YoutubeAnnotatorSettings, YoutubeAnnotatorSettingTab } from "@settings/settings";
-import { VIEW_TYPE_YOUTUBE_ANNOTATOR, YoutubeAnnotatorView } from "@view/youtube-annotator-view";
-import { VIEW_TYPE_YOUTUBE_PLAYER, YoutubePlayerView } from "@view/youtube-player-view";
-import { getYouTubeEmbedUrl } from "./util/youtube-util";
+import {
+  YoutubeAnnotatorSettingTab,
+  DEFAULT_SETTINGS,
+  type YoutubeAnnotatorSettings,
+} from "./settings/settings";
+
+import { getYouTubeEmbedUrl } from "./utils/youtube-utils";
+import { YoutubeUrlModal } from "./modals/promptmodal";
+import { YouTubeAnnotator, YOUTUBE_VIEW_TYPE } from "./view/youtube-annotator-view";
 
 export default class YoutubeAnnotatorPlugin extends Plugin {
   settings: YoutubeAnnotatorSettings;
 
   async onload() {
-    //console.log(" Wait YouTube Annotator plugin loading ...");
     await this.loadSettings();
 
-    // Register views only if not already registered
-  let registeredViews = new Set<string>();
-
-  if (!registeredViews.has(VIEW_TYPE_YOUTUBE_PLAYER)) {
-    this.registerView(VIEW_TYPE_YOUTUBE_PLAYER, (leaf) => new YoutubePlayerView(leaf));
-    registeredViews.add(VIEW_TYPE_YOUTUBE_PLAYER);
-  }
-
-  if (!registeredViews.has(VIEW_TYPE_YOUTUBE_ANNOTATOR)) {
-    this.registerView(VIEW_TYPE_YOUTUBE_ANNOTATOR, (leaf) => new YoutubeAnnotatorView(leaf));
-    registeredViews.add(VIEW_TYPE_YOUTUBE_ANNOTATOR);
-  }
-
-
-    // Add settings tab
+    // Register plugin settings tab
     this.addSettingTab(new YoutubeAnnotatorSettingTab(this.app, this));
 
-    // Command: Ask user for YouTube URL and open split view
-    this.addCommand({
-      id: "open-youtube-annotator-split",
-      name: "Open YouTube Annotator with URL",
-      callback: async () => {
-        const youtubeUrl = await this.promptForYoutubeUrl();
+    // Register custom view
+    this.registerView(
+      YOUTUBE_VIEW_TYPE,
+      (leaf) => new YouTubeAnnotator(leaf, this)
+    );
+
+    // Ribbon icon
+    this.addRibbonIcon("play-circle", "Open YouTube Annotator", () => {
+      new YoutubeUrlModal(this.app, async (youtubeUrl: string) => {
         if (!youtubeUrl) return;
-        await this.openYoutubeSplitView(youtubeUrl);
-      },
-      
-    });
-
-    // Ribbon icon to open YouTube Annotator where user can paste a URL
-    this.addRibbonIcon("play-circle", "Open YouTube Annotator", async () => {
-      const youtubeUrl = await this.promptForYoutubeUrl();
-      if (!youtubeUrl) return;
-      await this.openYoutubeSplitView(youtubeUrl);
-    });
-
-    // Transcript modal
-    this.addCommand({
-      id: "open-transcript-modal",
-      name: "Show Transcript Modal",
-      callback: () => new TranscriptModal(this.app).open(),
-    });
-
-    // Hotkeys
-    registerHotkeys();
-  }
-
-  async openYoutubeSplitView(url: string) {
-    const { workspace } = this.app;
-
-    // Get the currently active leaf and split it vertically
-    const leftLeaf = workspace.getLeaf(false);
-    workspace.setActiveLeaf(leftLeaf); // Ensure leftLeaf is active
-    const rightLeaf = workspace.splitActiveLeaf('vertical');
-
-    // Left side: YouTube player
-    await leftLeaf.setViewState({
-      type: VIEW_TYPE_YOUTUBE_PLAYER,
-      active: true,
-      state: { embedUrl : url },
-    });
-
-    // Right side: Annotator note
-    const file = await this.createAnnotatorNoteWithUrl(url);
-    await rightLeaf.setViewState({
-      type: VIEW_TYPE_YOUTUBE_ANNOTATOR,
-      active: true,
-      state: { embedUrl : url  },
-   });
-  } 
-
-  async createAnnotatorNoteWithUrl(url: string): Promise<TFile> {
-	const folderPath = "YouTube Notes";
-	const fileName = `yt-annotation-${Date.now()}.md`;
-	const filePath = `${folderPath}/${fileName}`; 
-	// Extract YouTube video ID from any valid format
-	const embedUrl = getYouTubeEmbedUrl(url);
-	if (!embedUrl) throw new Error("Invalid YouTube URL");
-
-	//const embedUrl = `https://www.youtube.com/embed/${videoId}`;
-	const iframe = `<iframe width="100%" height="315" src="${embedUrl}" frameborder="0"></iframe>\n\n`;
-	const content = `${iframe}## Your Notes\n\n`;
-  console.log("this is the url varibale from main.ts", embedUrl);  
-	// Create folder if it doesn't exist
-	if (!(await this.app.vault.adapter.exists(folderPath))) {
-		await this.app.vault.createFolder(folderPath);
-	}
-
-	return await this.app.vault.create(filePath, content);
-}
-
-  async promptForYoutubeUrl(): Promise<string | null> {
-    return new Promise((resolve) => {
-      new PromptModal("Paste YouTube URL", (result: string | null) => {
-        resolve(result);
+        await this.createYoutubeAnnotationNote(youtubeUrl.trim());
       }).open();
     });
-    
+
+    // Command palette entry
+    this.addCommand({
+      id: "open-youtube-annotator",
+      name: "New YouTube Annotation",
+      callback: async () => {
+        const url = await this.promptForYoutubeUrl();
+        if (!url) {
+          new Notice("No URL entered");
+          return;
+        }
+
+        await this.createYoutubeAnnotationNote(url);
+      }
+    });
   }
-  
-  onunload() {
-    this.app.workspace.detachLeavesOfType(VIEW_TYPE_YOUTUBE_PLAYER);
-    this.app.workspace.detachLeavesOfType(VIEW_TYPE_YOUTUBE_ANNOTATOR);
+
+  async onunload() {
+    // Clean up view instances
+    this.app.workspace.detachLeavesOfType(YOUTUBE_VIEW_TYPE);
   }
 
   async loadSettings() {
@@ -132,5 +69,51 @@ export default class YoutubeAnnotatorPlugin extends Plugin {
 
   async saveSettings() {
     await this.saveData(this.settings);
+  }
+
+  async promptForYoutubeUrl(): Promise<string | null> {
+    const input = window.prompt("Paste YouTube URL:");
+    return input?.trim() || null;
+  }
+
+  getYouTubeEmbedUrl(copiedUrl: string): string | null {
+    const regex =
+      /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})(?:[^\s]*)/;
+    const match = copiedUrl.match(regex);
+
+    if (match) {
+      const videoId = match[1];
+      return `https://www.youtube.com/embed/${videoId}`;
+    }
+
+    return null;
+  }
+
+  async createYoutubeAnnotationNote(url: string) {
+    const embedUrl = this.getYouTubeEmbedUrl(url);
+    if (!embedUrl) {
+      new Notice("Invalid YouTube URL");
+      return;
+    }
+
+    const youtubefolder = "YouTube_Notes";
+    const timestamp = Date.now();
+    const fileName = `TY-Notes-${timestamp}.md`;
+    const filePath = `${youtubefolder}/${fileName}`;
+
+    if (!(await this.app.vault.adapter.exists(youtubefolder))) {
+      await this.app.vault.createFolder(youtubefolder);
+    }
+
+    const content = `
+[Watch on YouTube](${url})
+
+<iframe width="100%" height="360" src="${embedUrl}" frameborder="0" allowfullscreen></iframe>
+---
+## Notes Below
+`;
+
+    const file = await this.app.vault.create(filePath, content);
+    await this.app.workspace.getLeaf(true).openFile(file);
   }
 }

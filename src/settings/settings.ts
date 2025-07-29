@@ -1,5 +1,4 @@
-// as part of a modular design - all my plugin settings reside. 
-import { App, PluginSettingTab } from "obsidian";
+import { App, PluginSettingTab, Setting } from "obsidian";
 import type YoutubeAnnotatorPlugin from "../main";
 
 export interface YoutubeAnnotatorSettings {
@@ -13,17 +12,40 @@ export const DEFAULT_SETTINGS: YoutubeAnnotatorSettings = {
 };
 
 export class YoutubeAnnotatorSettingTab extends PluginSettingTab {
-	plugin: YoutubeAnnotatorPlugin;
-	constructor(app: App, plugin: YoutubeAnnotatorPlugin) {
-		super(app, plugin);
-		this.plugin = plugin;
-	}
+  plugin: YoutubeAnnotatorPlugin;
+
+  constructor(app: App, plugin: YoutubeAnnotatorPlugin) {
+    super(app, plugin);
+    this.plugin = plugin;
+  }
 
   display(): void {
     const { containerEl } = this;
-    containerEl.empty();
-    containerEl.createEl("h2", { text: "YouTube Annotator Settings" });
+  
+    new Setting(containerEl)
+      .setName("Enable Transcript")
+      .setDesc("Toggle transcript generation (for future features).")
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.enableTranscript)
+          .onChange(async (value) => {
+            this.plugin.settings.enableTranscript = value;
+            await this.plugin.saveSettings();
+          })
+      );
 
-    // add actual settings here later
+    new Setting(containerEl)
+      .setName("Default Playback Speed")
+      .setDesc("Set the default YouTube video playback speed.")
+      .addSlider((slider) =>
+        slider
+          .setLimits(0.25, 3.0, 0.25)
+          .setValue(this.plugin.settings.defaultPlaybackSpeed)
+          .setDynamicTooltip()
+          .onChange(async (value) => {
+            this.plugin.settings.defaultPlaybackSpeed = value;
+            await this.plugin.saveSettings();
+          })
+      );
   }
 }
