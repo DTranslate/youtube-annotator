@@ -14,7 +14,7 @@ export const DEFAULT_SETTINGS: YoutubeAnnotatorSettings = {
   enableTranscript: true,
   defaultPlaybackSpeed: 1.0,
   youtubeFolder: "YouTube_Notes",  // Default fallback
-  DateTimestampFormat: DateTimestampFormat.Unix,
+  DateTimestampFormat: DateTimestampFormat.ISO,
 };
 
 export class YoutubeAnnotatorSettingTab extends PluginSettingTab {
@@ -72,22 +72,24 @@ export class YoutubeAnnotatorSettingTab extends PluginSettingTab {
         );
 
 
-  // DateTimestampFormat format setting for the note filenames
+  // DateTimestampFormat dropdown
     new Setting(containerEl)
       .setName("Note Filename DateTimestampFormat Format")
       .setDesc("Choose the DateTimestampFormat format used in note filenames.")
       .addDropdown(dropdown =>
         dropdown
-          .addOption("epoch", "Epoch (1753823935274)")
-          .addOption("YYYY-MM-DD", "2025-07-29")
-          .addOption("YYYY_MM_DD", "2025_07_29")
-          .addOption("YYYYMMDD-HHmm", "20250729-1634")
-          .addOption("HH-mm-ss", "16-34-22")
-          .addOption("none", "No timestamp")
+          .addOption(DateTimestampFormat.Unix, "Epoch (1753823935274)")
+          .addOption(DateTimestampFormat.ISO, "2025-07-29")
+          .addOption(DateTimestampFormat.Underscore, "2025_07_29")
+          .addOption(DateTimestampFormat.Compact, "20250729-1634")
+          .addOption(DateTimestampFormat.TimeOnly, "16-34-22")
+          .addOption(DateTimestampFormat.None, "No timestamp")
           .setValue(this.plugin.settings.DateTimestampFormat)
           .onChange(async (value: string) => {
-        this.plugin.settings.DateTimestampFormat = value as DateTimestampFormat;
-        await this.plugin.saveSettings();
+            this.plugin.settings.DateTimestampFormat = value as DateTimestampFormat;
+            await this.plugin.saveSettings();
+            const preview = generateDateTimestamp(this.plugin.settings.DateTimestampFormat);
+            console.log("DateTimestampFormat preview:", preview); // Debug preview
           })
         );
   // Add more settings as needed

@@ -18,7 +18,7 @@ import {
 import { getYouTubeEmbedUrl } from "./utils/youtube-utils";
 import { YoutubeUrlModal } from "./modals/promptmodal";
 import { YouTubeAnnotator, YOUTUBE_VIEW_TYPE } from "./view/youtube-annotator-view";
-import { generateDateTimestamp, DateTimestampFormat } from "./utils/date-timestamp";
+import{ generateDateTimestamp, DateTimestampFormat } from "./utils/date-timestamp";
 
 
 
