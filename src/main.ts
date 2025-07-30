@@ -1,4 +1,3 @@
-// main.ts — YouTube Annotator Plugin Entry Point
 import {
   Plugin,
   WorkspaceLeaf,
@@ -18,21 +17,22 @@ import {
 import { getYouTubeEmbedUrl } from "./utils/youtube-utils";
 import { YoutubeUrlModal } from "./modals/promptmodal";
 import { generateDateTimestamp, DateTimestampFormat } from "./utils/date-timestamp";
-import { QuadrantLayout } from "./view/quadrant-view"; // <- Quadrant layout support
+import { QuadrantLayout } from "./view/quadrant-view"; // Quadrant layout support
 
 export default class YoutubeAnnotatorPlugin extends Plugin {
   settings: YoutubeAnnotatorSettings;
+  quadrant: QuadrantLayout | null = null;  // <-- add this
+
+  activeQuadrant: QuadrantLayout | null = null;
+  activeFilePath: string | null = null; // track which note the quadrant belongs to
 
   async onload() {
     await this.loadSettings();
 
-    // Load external CSS
     this.injectCSS();
 
-    // Register plugin settings tab
     this.addSettingTab(new YoutubeAnnotatorSettingTab(this.app, this));
 
-    // Ribbon icon
     this.addRibbonIcon("play-circle", "Open YouTube Annotator", () => {
       new YoutubeUrlModal(this.app, async (youtubeUrl: string) => {
         if (!youtubeUrl) return;
@@ -40,7 +40,6 @@ export default class YoutubeAnnotatorPlugin extends Plugin {
       }).open();
     });
 
-    // Command palette entry
     this.addCommand({
       id: "open-youtube-annotator",
       name: "New YouTube Annotation",
@@ -53,12 +52,63 @@ export default class YoutubeAnnotatorPlugin extends Plugin {
         await this.createYoutubeAnnotationNote(url);
       }
     });
+
+    // Add right-click context menu item on markdown files to toggle quadrant mode
+    this.registerEvent(
+      this.app.workspace.on("file-menu", (menu, file: TFile) => {
+        if (file.extension === "md") {
+          menu.addItem((item) => {
+            item
+              .setTitle("Toggle YouTube Quadrant Mode")
+              .setIcon("play-circle")
+              .onClick(() => this.toggleQuadrantForFile(file));
+          });
+        }
+      })
+    );
+
+    // Auto show quadrant on file open if enabled in settings
+    this.registerEvent(
+      this.app.workspace.on("file-open", async (file) => {
+        if (
+          !file ||
+          file.extension !== "md" ||
+          !this.settings.autoOpenQuadrantOnNoteOpen
+        ) {
+          // Auto-open disabled or not markdown file
+          this.removeQuadrant();
+          return;
+        }
+
+        const content = await this.app.vault.read(file);
+        if (content.includes("youtubeurl:")) {
+          // Extract youtubeurl from frontmatter
+          const match = content.match(/youtubeurl:\s*(.*)/);
+          const url = match?.[1]?.trim();
+          if (url) {
+            this.showQuadrant(url, file.path);
+          } else {
+            this.removeQuadrant();
+          }
+        } else {
+          this.removeQuadrant();
+        }
+      })
+    );
+
+    // Remove quadrant when active leaf changes away from current file
+    this.registerEvent(
+      this.app.workspace.on("active-leaf-change", () => {
+        const activeFile = this.app.workspace.getActiveFile();
+        if (!activeFile || activeFile.path !== this.activeFilePath) {
+          this.removeQuadrant();
+        }
+      })
+    );
   }
 
-  async onunload() {
-    // Cleanup quadrant layout from DOM
-    const existing = document.getElementById("quadrant-layout");
-    if (existing) existing.remove();
+  onunload() {
+    this.removeQuadrant();
   }
 
   async loadSettings() {
@@ -83,7 +133,6 @@ export default class YoutubeAnnotatorPlugin extends Plugin {
       const videoId = match[1];
       return `https://www.youtube.com/embed/${videoId}`;
     }
-
     return null;
   }
 
@@ -121,16 +170,56 @@ created: ${new Date().toISOString()}
     const file = await this.app.vault.create(filePath, content);
     await this.app.workspace.getLeaf(true).openFile(file);
 
-    // Inject quadrant layout after note is created
-    const quadrant = new QuadrantLayout(this.app,embedUrl);
-    document.body.appendChild(quadrant.getElement());
+    // Show quadrant when new note created
+    this.showQuadrant(embedUrl, file.path);
+  }
+
+  // Show Quadrant: creates or updates the quadrant overlay
+  showQuadrant(embedUrl: string, filePath: string) {
+    this.removeQuadrant(); // Remove previous if any
+
+    this.activeQuadrant = new QuadrantLayout(this.app, embedUrl);
+    document.body.appendChild(this.activeQuadrant.getElement());
+
+    this.activeFilePath = filePath;
+  }
+
+  // Remove quadrant overlay if exists
+  removeQuadrant() {
+    if (this.activeQuadrant) {
+      this.activeQuadrant.container.remove();
+      this.activeQuadrant = null;
+      this.activeFilePath = null;
+    }
+  }
+  remove() {
+  this.activeQuadrant?.container.remove();
+}
+  // Toggle quadrant on/off for a given file
+  async toggleQuadrantForFile(file: TFile) {
+    const content = await this.app.vault.read(file);
+    const match = content.match(/youtubeurl:\s*(.*)/);
+    const url = match?.[1]?.trim();
+
+    if (!url) {
+      new Notice("No YouTube URL found in note frontmatter");
+      return;
+    }
+
+    if (this.activeFilePath === file.path) {
+      // Quadrant already open for this file => close it
+      this.removeQuadrant();
+    } else {
+      // Open quadrant for this file
+      this.showQuadrant(url, file.path);
+    }
   }
 
   injectCSS() {
     const link = document.createElement("link");
     link.rel = "stylesheet";
     link.type = "text/css";
-    // Adjust path based on your plugin folder name if needed
+    // Adjust path if plugin folder differs
     link.href = this.app.vault.adapter.getResourcePath(`${this.manifest.dir}/styles.css`);
     document.head.appendChild(link);
   }
