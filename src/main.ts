@@ -17,8 +17,9 @@ import {
 
 import { getYouTubeEmbedUrl } from "./utils/youtube-utils";
 import { YoutubeUrlModal } from "./modals/promptmodal";
-import { YouTubeAnnotator, YOUTUBE_VIEW_TYPE } from "./view/youtube-annotator-view";
 import{ generateDateTimestamp, DateTimestampFormat } from "./utils/date-timestamp";
+
+
 
 
 
@@ -32,10 +33,7 @@ export default class YoutubeAnnotatorPlugin extends Plugin {
     this.addSettingTab(new YoutubeAnnotatorSettingTab(this.app, this));
 
     // Register custom view
-    this.registerView(
-      YOUTUBE_VIEW_TYPE,
-      (leaf) => new YouTubeAnnotator(leaf, this)
-    );
+    
 
     // Ribbon icon
     this.addRibbonIcon("play-circle", "Open YouTube Annotator", () => {
@@ -63,7 +61,7 @@ export default class YoutubeAnnotatorPlugin extends Plugin {
 
   async onunload() {
     // Clean up view instances
-    this.app.workspace.detachLeavesOfType(YOUTUBE_VIEW_TYPE);
+
   }
 
   async loadSettings() {
