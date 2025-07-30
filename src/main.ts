@@ -17,11 +17,8 @@ import {
 
 import { getYouTubeEmbedUrl } from "./utils/youtube-utils";
 import { YoutubeUrlModal } from "./modals/promptmodal";
-import{ generateDateTimestamp, DateTimestampFormat } from "./utils/date-timestamp";
-
-
-
-
+import { generateDateTimestamp, DateTimestampFormat } from "./utils/date-timestamp";
+import { QuadrantLayout } from "./view/quadrant-view"; // <- Quadrant layout support
 
 export default class YoutubeAnnotatorPlugin extends Plugin {
   settings: YoutubeAnnotatorSettings;
@@ -29,11 +26,11 @@ export default class YoutubeAnnotatorPlugin extends Plugin {
   async onload() {
     await this.loadSettings();
 
+    // Load external CSS
+    this.injectCSS();
+
     // Register plugin settings tab
     this.addSettingTab(new YoutubeAnnotatorSettingTab(this.app, this));
-
-    // Register custom view
-    
 
     // Ribbon icon
     this.addRibbonIcon("play-circle", "Open YouTube Annotator", () => {
@@ -53,15 +50,15 @@ export default class YoutubeAnnotatorPlugin extends Plugin {
           new Notice("No URL entered");
           return;
         }
-
         await this.createYoutubeAnnotationNote(url);
       }
     });
   }
 
   async onunload() {
-    // Clean up view instances
-
+    // Cleanup quadrant layout from DOM
+    const existing = document.getElementById("quadrant-layout");
+    if (existing) existing.remove();
   }
 
   async loadSettings() {
@@ -97,22 +94,44 @@ export default class YoutubeAnnotatorPlugin extends Plugin {
       return;
     }
 
-    //const youtubefolder = "YouTube_Notes";
-	const youtubefolder = this.settings.youtubeFolder || "YouTube_Notes";
+    const youtubefolder = this.settings.youtubeFolder || "YouTube_Notes";
     const timestamp = generateDateTimestamp(this.settings.DateTimestampFormat);
-	const fileName = `YT-Notes-${timestamp}.md`;
+    const fileName = `YT-Notes-${timestamp}.md`;
     const filePath = `${youtubefolder}/${fileName}`;
 
     if (!(await this.app.vault.adapter.exists(youtubefolder))) {
       await this.app.vault.createFolder(youtubefolder);
     }
 
-    const content = `[Watch on YouTube](${url})
-<iframe width="100%" height="360" src="${embedUrl}" frameborder="0" allowfullscreen></iframe>
+    const content = `---
+youtubeurl: ${embedUrl}
+title: "Some Title"
+created: ${new Date().toISOString()}
 ---
+
+[Watch on YouTube](${url})
+
+<iframe width="100%" height="360" src="${embedUrl}" frameborder="0" allowfullscreen></iframe>
+
+---
+
 ## Notes:-
 `;
-const file = await this.app.vault.create(filePath, content);
-await this.app.workspace.getLeaf(true).openFile(file);
+
+    const file = await this.app.vault.create(filePath, content);
+    await this.app.workspace.getLeaf(true).openFile(file);
+
+    // Inject quadrant layout after note is created
+    const quadrant = new QuadrantLayout(this.app,embedUrl);
+    document.body.appendChild(quadrant.getElement());
+  }
+
+  injectCSS() {
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.type = "text/css";
+    // Adjust path based on your plugin folder name if needed
+    link.href = this.app.vault.adapter.getResourcePath(`${this.manifest.dir}/styles.css`);
+    document.head.appendChild(link);
   }
 }
