@@ -22,6 +22,7 @@ class YoutubeUrlModal extends Modal {
           .onChange((value) => {
             inputValue = value;
           })
+          .inputEl.setAttribute("style", "width: 400px;")
       );
 
     new Setting(contentEl)
