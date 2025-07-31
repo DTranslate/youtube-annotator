@@ -15,7 +15,7 @@ export const DEFAULT_SETTINGS: YoutubeAnnotatorSettings = {
   enableTranscript: true,
   defaultPlaybackSpeed: 1.0,
   youtubeFolder: "YouTube_Notes",  // Default fallback
-  DateTimestampFormat: DateTimestampFormat.ISO,
+  DateTimestampFormat: DateTimestampFormat.Compact,
   autoOpenQuadrantOnNoteOpen: true, // or false as you prefer
 };
 
@@ -73,28 +73,31 @@ export class YoutubeAnnotatorSettingTab extends PluginSettingTab {
           })
         );
 
-
   // DateTimestampFormat dropdown
+    const now = new Date();
     new Setting(containerEl)
       .setName("Note Filename DateTimestampFormat Format")
       .setDesc("Choose the DateTimestampFormat format used in note filenames.")
       .addDropdown(dropdown =>
-        dropdown
-          .addOption(DateTimestampFormat.Unix, "Epoch (1753823935274)")
-          .addOption(DateTimestampFormat.ISO, "2025-07-29")
-          .addOption(DateTimestampFormat.Underscore, "2025_07_29")
-          .addOption(DateTimestampFormat.Compact, "20250729-1634")
-          .addOption(DateTimestampFormat.TimeOnly, "16-34-22")
-          .addOption(DateTimestampFormat.None, "No timestamp")
-          .setValue(this.plugin.settings.DateTimestampFormat)
-          .onChange(async (value: string) => {
-            this.plugin.settings.DateTimestampFormat = value as DateTimestampFormat;
-            await this.plugin.saveSettings();
-            const preview = generateDateTimestamp(this.plugin.settings.DateTimestampFormat);
-            console.log("DateTimestampFormat preview:", preview); // Debug preview
-          })
-        );
-  // Add more settings as needed
+    dropdown
+      .addOption(DateTimestampFormat.Unix, `Epoch (${generateDateTimestamp(DateTimestampFormat.Unix, now)})`)
+      .addOption(DateTimestampFormat.ISO, generateDateTimestamp(DateTimestampFormat.ISO, now))
+      .addOption(DateTimestampFormat.Underscore, generateDateTimestamp(DateTimestampFormat.Underscore, now))
+      .addOption(DateTimestampFormat.Compact, generateDateTimestamp(DateTimestampFormat.Compact, now))
+      .addOption(DateTimestampFormat.TimeOnly, generateDateTimestamp(DateTimestampFormat.TimeOnly, now))
+      .addOption(DateTimestampFormat.None, "No timestamp")
+      .setValue(this.plugin.settings.DateTimestampFormat)
+      .setValue(this.plugin.settings.DateTimestampFormat)
+      .onChange(async (value: string) => {
+        this.plugin.settings.DateTimestampFormat = value as DateTimestampFormat;
+        await this.plugin.saveSettings();
+        const preview = generateDateTimestamp(this.plugin.settings.DateTimestampFormat);
+        console.log("DateTimestampFormat preview:", preview); // Debug preview
+      })
+    );
+  
+  
+        // Add more settings as needed
     new Setting(containerEl)
   .setName("Auto-open Quadrant on Note Open")
   .setDesc("Automatically open the YouTube quadrant when opening a note with YouTube embed.")

@@ -16,8 +16,10 @@ import {
 
 import { getYouTubeEmbedUrl } from "./utils/youtube-utils";
 import { YoutubeUrlModal } from "./modals/promptmodal";
-import { generateDateTimestamp, DateTimestampFormat } from "./utils/date-timestamp";
+import { generateDateTimestamp, DateTimestampFormat } from "utils/date-timestamp";
 import { QuadrantLayout } from "./view/quadrant-view"; // Quadrant layout support
+import { registerCommands } from "./commands/commands"; // Command registration
+
 
 declare global {
   interface Window {
@@ -25,6 +27,8 @@ declare global {
     YT: any;
   }
 }
+
+
 
 export default class YoutubeAnnotatorPlugin extends Plugin {
   settings: YoutubeAnnotatorSettings;
@@ -35,7 +39,7 @@ export default class YoutubeAnnotatorPlugin extends Plugin {
 
   async onload() {
     await this.loadSettings();
-    this.injectCSS();
+
 
     this.addSettingTab(new YoutubeAnnotatorSettingTab(this.app, this));
 
@@ -49,9 +53,9 @@ export default class YoutubeAnnotatorPlugin extends Plugin {
       }).open();
     });
 
-    /*
-    ******************** Add all commands start here ********************
-    */
+    // /*
+    // ******************** Add all commands start here ********************
+    // */
     this.addCommand({
       id: "open-youtube-annotator",
       name: "New YouTube Annotation",
@@ -98,7 +102,7 @@ export default class YoutubeAnnotatorPlugin extends Plugin {
         { modifiers: ["Mod", "Shift"], key: "T" } // Ctrl+Shift+T or Cmd+Shift+T
       ],
       callback: async () => {
-        if (!this.player || !this.player.getPlayerState.ready) {
+        if (!this.player) {
           new Notice("Video player is not active");
           return;
         }
@@ -137,9 +141,9 @@ export default class YoutubeAnnotatorPlugin extends Plugin {
         }
       }
     });
-    /*
-    ******************** Add all commands end here ********************
-    */
+    // /*
+    // ******************** Add all commands end here ********************
+    // */
 
     // Add right-click context menu item on markdown files to toggle quadrant mode
     this.registerEvent(
@@ -289,12 +293,13 @@ created: ${new Date().toISOString()}
   }
 
   // Initialize YouTube Player
-  initYouTubePlayer() {
+initYouTubePlayer() {
   if (!window.YT || !window.YT.Player) {
     console.warn("YouTube IFrame API not loaded");
     return;
   }
-    const iframe = document.getElementById("yt-iframe");
+
+  const iframe = document.getElementById("yt-iframe");
   if (!iframe) {
     console.warn("YouTube iframe not found");
     return;
@@ -305,19 +310,20 @@ created: ${new Date().toISOString()}
     this.player = null;
   }
 
-  this.player = false;
-
   this.player = new window.YT.Player("yt-iframe", {
     events: {
-      onReady: () => {
-        this.player = true;
+      onReady: (event: YT.PlayerEvent) => {
+        console.log("YouTube Player is ready");
+        // you can optionally auto-play:
+        // event.target.playVideo();
       },
-      onStateChange: (event: any) => {
-        // optional state changes
+      onStateChange: (event: YT.PlayerEvent) => {
+        console.log("Player state changed:", event.data);
       },
     },
   });
 }
+
 
   loadYouTubeAPI() {
     if (window.YT && window.YT.Player) {
@@ -354,14 +360,5 @@ created: ${new Date().toISOString()}
       // Open quadrant for this file
       this.showQuadrant(url, file.path);
     }
-  }
-
-  injectCSS() {
-    const link = document.createElement("link");
-    link.rel = "stylesheet";
-    link.type = "text/css";
-    // Adjust path if plugin folder differs
-    link.href = this.app.vault.adapter.getResourcePath(`${this.manifest.dir}/styles.css`);
-    document.head.appendChild(link);
   }
 }

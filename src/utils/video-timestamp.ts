@@ -1,25 +1,22 @@
-// youtube-annotator/src/utils/date-timestamp.ts
+// src/video-timestamp.ts
+import { createYoutubePlayer } from "components/player";
+const player = new YT.Player("iframe-id", { /* options */ });
 
-export enum TimestampFormat {
-  Unix = "Unix (timestamp)",
-  ISO = "ISO (YYYY-MM-DDTHH:mm:ss)",
-  Compact = "Compact (YYYYMMDD_HHmmss)"
-}
-
-export function generateVideoTimestamp(format: TimestampFormat): string {
-  const now = new Date();
-
-  switch (format) {
-    case TimestampFormat.ISO:
-      return now.toISOString();
-    case TimestampFormat.Compact:
-      return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-    case TimestampFormat.Unix:
-    default:
-      return `${now.getTime()}`;
+export function getCurrentTimestamp(): string {
+  if (!YT.Player || typeof player.getCurrentTime !== "function") {
+    console.warn("YouTube player is not initialized or invalid.");
+    return "00:00:00";
   }
-}
 
-function pad(n: number): string {
-  return n.toString().padStart(2, "0");
+  const seconds = Math.floor(player.getCurrentTime());
+
+  const hrs = Math.floor(seconds / 3600)
+    .toString()
+    .padStart(2, "0");
+  const mins = Math.floor((seconds % 3600) / 60)
+    .toString()
+    .padStart(2, "0");
+  const secs = (seconds % 60).toString().padStart(2, "0");
+
+  return `${hrs}:${mins}:${secs}`;
 }
