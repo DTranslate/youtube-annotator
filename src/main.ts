@@ -13,12 +13,20 @@ import {
   type YoutubeAnnotatorSettings,
 } from "./settings/settings";
 
-import { getYouTubeEmbedUrl } from "./utils/youtube-utils";
+import {
+  extractYouTubeVideoId,
+  getYouTubeEmbedUrl,
+  getYouTubeWatchUrl
+} from "./utils/youtube-utils";
+
+
 import { YoutubeUrlModal } from "./modals/promptmodal";
 import { generateDateTimestamp } from "utils/date-timestamp";
 import { registerCommands } from "./commands/commands";
-import { loadYouTubeIframeAPI, createYoutubePlayer, player } from "./components/player";
+import { loadYouTubeIframeAPI, YouTubePlayer,  } from "./components/player";
 import { createYoutubePlayerFromActiveNote } from "./utils/youtube";
+import { getCurrentTimestamp,formatTimestamp } from "./utils/video-timestamp";
+
 
 export default class YoutubeAnnotatorPlugin extends Plugin {
   settings: YoutubeAnnotatorSettings;
@@ -37,7 +45,7 @@ export default class YoutubeAnnotatorPlugin extends Plugin {
     });
 
     await loadYouTubeIframeAPI();
-
+// Load YouTube API and create player instance
     this.addCommand({
       id: "load-youtube-player",
       name: "Load YouTube Player from Note",
@@ -45,7 +53,7 @@ export default class YoutubeAnnotatorPlugin extends Plugin {
         this.player = await createYoutubePlayerFromActiveNote(this.app);
       },
     });
-
+// Add command to create YouTube player from active note
     this.addCommand({
       id: "insert-youtube-player",
       name: "Insert YouTube Player from Frontmatter",
@@ -53,7 +61,7 @@ export default class YoutubeAnnotatorPlugin extends Plugin {
         createYoutubePlayerFromActiveNote(this.app);
       },
     });
-
+//
     this.addCommand({
       id: "open-youtube-annotator",
       name: "New YouTube Annotation",
@@ -66,7 +74,7 @@ export default class YoutubeAnnotatorPlugin extends Plugin {
         await this.createYoutubeAnnotationNote(url);
       },
     });
-
+// Add command to capture timestamp and pause/resume video
     this.addCommand({
       id: "capture-timestamp-pause-play",
       name: "Capture Video Timestamp and Pause/Resume",
@@ -110,6 +118,28 @@ export default class YoutubeAnnotatorPlugin extends Plugin {
         }
       },
     });
+// Add command to copy current timestamp
+    this.addCommand({
+      id: "copy-youtube-timestamp",
+      name: "Copy YouTube Timestamp",
+      callback: async () => {
+        const timestamp = getCurrentTimestamp(this.player);
+        await navigator.clipboard.writeText(timestamp);
+        new Notice(`Copied timestamp: ${timestamp}`);
+      },
+    });
+// Add command to insert current timestamp into editor
+    this.addCommand({
+      id: "insert-youtube-timestamp",
+      name: "Insert YouTube Timestamp",
+      editorCallback: (editor, view) => {
+        const timestamp = getCurrentTimestamp(this.player);
+        const cursor = editor.getCursor();
+        editor.replaceRange(`${timestamp} `, cursor);
+      },
+    });
+
+
   }
 
   onunload() {}
@@ -127,20 +157,11 @@ export default class YoutubeAnnotatorPlugin extends Plugin {
     return input?.trim() || null;
   }
 
-  getYouTubeEmbedUrl(copiedUrl: string): string | null {
-    const regex =
-      /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})(?:[^\s]*)/;
-    const match = copiedUrl.match(regex);
-
-    if (match) {
-      const videoId = match[1];
-      return `https://www.youtube.com/watch?v=${videoId}`;
-    }
-    return null;
-  }
 
   async createYoutubeAnnotationNote(url: string) {
-    const embedUrl = this.getYouTubeEmbedUrl(url);
+    const embedUrl = getYouTubeEmbedUrl(extractYouTubeVideoId(url) ?? "");
+    const watchUrl = getYouTubeWatchUrl(extractYouTubeVideoId(url) ?? "");
+
     if (!embedUrl) {
       new Notice("Invalid YouTube URL");
       return;
@@ -156,15 +177,17 @@ export default class YoutubeAnnotatorPlugin extends Plugin {
     }
 
     const content = `---
-youtubeurl: ${embedUrl}
+youtubeurl: ${watchUrl}
+embedurl: ${embedUrl}
 title: "Some Title"
+status: "active"
+tags: [youtube, notes]
+date: ${timestamp}
 created: ${new Date().toISOString()}
 ---
 [Watch on YouTube](${url})
 <iframe id="yt-iframe" width="100%" height="360" src="${embedUrl}" frameborder="0" allowfullscreen></iframe>
-
 ---
-
 ## Notes:-
 `;
 

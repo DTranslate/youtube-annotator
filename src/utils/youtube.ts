@@ -1,6 +1,6 @@
 // utils/youtube.ts
 import { App, MarkdownView } from "obsidian";
-import { loadYouTubeIframeAPI, createYoutubePlayer,YouTubePlayer, player } from "../components/player";
+import { loadYouTubeIframeAPI, YouTubePlayer } from "../components/player";
 
 export async function createYoutubePlayerFromActiveNote(app: App): Promise<YT.Player | undefined> {
   const view = app.workspace.getActiveViewOfType(MarkdownView);

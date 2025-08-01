@@ -1,7 +1,8 @@
 // src/components/player.ts
-import { getYouTubeVideoId, getYouTubeEmbedUrl } from "../utils/youtube-utils";
+import { publicDecrypt } from "crypto";
+import { extractYouTubeVideoId } from "../utils/youtube-utils";
 
-export function loadYouTubeIframeAPI(): Promise<void> {
+export async function loadYouTubeIframeAPI(): Promise<void> {
   return new Promise((resolve) => {
     if (window.YT && window.YT.Player) {
       resolve();
@@ -18,55 +19,68 @@ export function loadYouTubeIframeAPI(): Promise<void> {
   });
 }
 
-export let player: YT.Player;
-export function createYoutubePlayer(containerId: string, videoId: string): YT.Player {
-  player = new YT.Player(containerId, {
-    height: "360",
-    width: "640",
-    videoId: videoId,
-    events: {
-      onReady: () => {
-        console.log("YouTube Player is ready");
-      },
-      onStateChange: (event) => {
-        if (event.data === YT.PlayerState.PLAYING) {
-          console.log("Video is playing");
-        } else if (event.data === YT.PlayerState.PAUSED) {
-          console.log("Video is paused");
-        } else if (event.data === YT.PlayerState.ENDED) {
-          console.log("Video has ended");
-        }
-      }
-    },
-  });
-
-  return player;
-}
-
 export class YouTubePlayer {
   private containerId: string;
   private videoUrl: string;
   private player: YT.Player | null = null;
-
-  constructor(containerId: string, videoUrl: string) {
+  private parentElement: HTMLElement;
+  
+  constructor(containerId: string, videoUrl: string, parentElement: HTMLElement) {
     this.containerId = containerId;
     this.videoUrl = videoUrl;
+    this.parentElement = parentElement;
   }
-
-  async init(onReadyCallback?: () => void) {
-    const videoId = getYouTubeVideoId(this.videoUrl);
+  public getRawPlayer(): YT.Player | null {
+    return this.player;
+  }
+  async init(onReadyCallback?: () => void): Promise<void> {
+    const videoId = extractYouTubeVideoId(this.videoUrl);
     if (!videoId) {
       console.error("Invalid YouTube URL");
       return;
     }
+    
+
+    // Inject the container <div> into the parent
+    const existing = document.getElementById(this.containerId);
+    if (!existing) {
+      const container = document.createElement("div");
+      container.id = this.containerId;
+      this.parentElement.appendChild(container);
+    }
+
+    // Load IFrame API if not already loaded
     await loadYouTubeIframeAPI();
+
+    // Initialize the player
+    this.player = new YT.Player(this.containerId, {
+      height: "360",
+      width: "640",
+      videoId: videoId,
+      events: {
+        onReady: () => {
+          console.log("✅ YouTube Player is ready");
+          if (onReadyCallback) onReadyCallback();
+        },
+        onStateChange: (event) => {
+          switch (event.data) {
+            case YT.PlayerState.PLAYING:
+              console.log("▶️ Video is playing");
+              break;
+            case YT.PlayerState.PAUSED:
+              console.log("⏸️ Video is paused");
+              break;
+            case YT.PlayerState.ENDED:
+              console.log("⏹️ Video has ended");
+              break;
+          }
+        }
+      }
+    });
   }
 
   getCurrentTime(): number {
-    if (this.player && this.player.getCurrentTime) {
-      return this.player.getCurrentTime();
-    }
-    return 0;
+    return this.player?.getCurrentTime?.() ?? 0;
   }
 
   getFormattedTimestamp(): string {
@@ -77,7 +91,7 @@ export class YouTubePlayer {
   }
 
   getTimestampLink(): string {
-    const videoId = getYouTubeVideoId(this.videoUrl);
+    const videoId = extractYouTubeVideoId(this.videoUrl);
     const time = Math.floor(this.getCurrentTime());
     return `https://youtu.be/${videoId}?t=${time}`;
   }
