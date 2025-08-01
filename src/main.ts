@@ -25,7 +25,8 @@ import { generateDateTimestamp } from "utils/date-timestamp";
 import { registerCommands } from "./commands/commands";
 import { loadYouTubeIframeAPI, YouTubePlayer,  } from "./components/player";
 import { createYoutubePlayerFromActiveNote } from "./utils/youtube";
-import { getCurrentTimestamp,formatTimestamp } from "./utils/video-timestamp";
+import { getCurrentTimestamp } from "./utils/video-timestamp";
+import { formatTimestamp } from "utils/timestamp";
 
 
 export default class YoutubeAnnotatorPlugin extends Plugin {
@@ -35,6 +36,8 @@ export default class YoutubeAnnotatorPlugin extends Plugin {
   async onload() {
     await this.loadSettings();
 
+    registerCommands(this);
+    
     this.addSettingTab(new YoutubeAnnotatorSettingTab(this.app, this));
 
     this.addRibbonIcon("play-circle", "Open YouTube Annotator", () => {
@@ -61,84 +64,6 @@ export default class YoutubeAnnotatorPlugin extends Plugin {
         createYoutubePlayerFromActiveNote(this.app);
       },
     });
-//
-    this.addCommand({
-      id: "open-youtube-annotator",
-      name: "New YouTube Annotation",
-      callback: async () => {
-        const url = await this.promptForYoutubeUrl();
-        if (!url) {
-          new Notice("No URL entered");
-          return;
-        }
-        await this.createYoutubeAnnotationNote(url);
-      },
-    });
-// Add command to capture timestamp and pause/resume video
-    this.addCommand({
-      id: "capture-timestamp-pause-play",
-      name: "Capture Video Timestamp and Pause/Resume",
-      hotkeys: [
-        { modifiers: ["Mod", "Shift"], key: "T" },
-      ],
-      callback: async () => {
-        if (!this.player) {
-          new Notice("Video player is not active");
-          return;
-        }
-
-        const playerState = this.player.getPlayerState();
-        const currentTime = this.player.getCurrentTime();
-        const mins = Math.floor(currentTime / 60);
-        const secs = Math.floor(currentTime % 60);
-        const timestampStr = `${mins}:${secs.toString().padStart(2, "0")}`;
-
-        const leaf = this.app.workspace.getLeaf();
-        if (!leaf) {
-          new Notice("No active note open");
-          return;
-        }
-
-        const view = leaf.view;
-        if (!(view instanceof MarkdownView)) {
-          new Notice("Active view is not a markdown note");
-          return;
-        }
-
-        const editor = view.editor;
-        const cursor = editor.getCursor();
-        editor.replaceRange(`[${timestampStr}] `, cursor);
-
-        if (playerState === window.YT.PlayerState.PLAYING) {
-          this.player.pauseVideo();
-          new Notice(`Paused at ${timestampStr}`);
-        } else {
-          this.player.playVideo();
-          new Notice(`Resumed at ${timestampStr}`);
-        }
-      },
-    });
-// Add command to copy current timestamp
-    this.addCommand({
-      id: "copy-youtube-timestamp",
-      name: "Copy YouTube Timestamp",
-      callback: async () => {
-        const timestamp = getCurrentTimestamp(this.player);
-        await navigator.clipboard.writeText(timestamp);
-        new Notice(`Copied timestamp: ${timestamp}`);
-      },
-    });
-// Add command to insert current timestamp into editor
-    this.addCommand({
-      id: "insert-youtube-timestamp",
-      name: "Insert YouTube Timestamp",
-      editorCallback: (editor, view) => {
-        const timestamp = getCurrentTimestamp(this.player);
-        const cursor = editor.getCursor();
-        editor.replaceRange(`${timestamp} `, cursor);
-      },
-    });
-
 
   }
 
