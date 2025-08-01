@@ -6,7 +6,7 @@ export function getYouTubeEmbedUrl(copiedUrl: string): string | null {
 	
 	if (match) {
 		const videoId = match[1]; // ← actual YouTube ID
-		const embedUrl = `https://www.youtube.com/embed/${videoId}`;
+		const embedUrl = `https://www.youtube.com/embed/${videoId}?enablejsapi=1`;
 		console.log("this is the youtube UID from youtube-utlis.ts", embedUrl);
 		return embedUrl;
 	} else {

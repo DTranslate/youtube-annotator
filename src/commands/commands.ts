@@ -60,33 +60,7 @@ export function registerCommands(plugin: YoutubeAnnotatorPlugin) {
       await plugin.createYoutubeAnnotationNote(url);
     },
   });
-
-  plugin.addCommand({
-    id: "toggle-quadrant-mode",
-    name: "Toggle Quadrant Mode",
-    hotkeys: [
-      { modifiers: ["Mod", "Shift"], key: "Q" },
-    ],
-    callback: () => {
-      if (plugin.activeQuadrant) {
-        plugin.removeQuadrant();
-        new Notice("Quadrant Mode Disabled");
-      } else {
-        new YoutubeUrlModal(plugin.app, async (youtubeUrl: string) => {
-          if (!youtubeUrl) return;
-          const embedUrl = plugin.getYouTubeEmbedUrl(youtubeUrl.trim());
-          if (!embedUrl) {
-            new Notice("Invalid YouTube URL");
-            return;
-          }
-          plugin.showQuadrant(embedUrl, null);
-          new Notice("Video player is not ready yet, please wait.");
-          return;
-        }).open();
-      }
-    },
-  });
-
+  
   plugin.addCommand({
     id: "capture-timestamp-pause-play",
     name: "Capture Video Timestamp and Pause/Resume",

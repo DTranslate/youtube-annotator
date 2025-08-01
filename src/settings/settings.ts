@@ -8,7 +8,7 @@ export interface YoutubeAnnotatorSettings {
   defaultPlaybackSpeed: number; // Default playback speed for YouTube videos
   youtubeFolder: string; // Folder to save YouTube notes
   DateTimestampFormat: DateTimestampFormat; // Format for timestamps in note filenames
-  autoOpenQuadrantOnNoteOpen: boolean;
+
 }
 
 export const DEFAULT_SETTINGS: YoutubeAnnotatorSettings = {
@@ -16,7 +16,7 @@ export const DEFAULT_SETTINGS: YoutubeAnnotatorSettings = {
   defaultPlaybackSpeed: 1.0,
   youtubeFolder: "YouTube_Notes",  // Default fallback
   DateTimestampFormat: DateTimestampFormat.Compact,
-  autoOpenQuadrantOnNoteOpen: true, // or false as you prefer
+
 };
 
 export class YoutubeAnnotatorSettingTab extends PluginSettingTab {
@@ -98,16 +98,6 @@ export class YoutubeAnnotatorSettingTab extends PluginSettingTab {
   
   
         // Add more settings as needed
-    new Setting(containerEl)
-  .setName("Auto-open Quadrant on Note Open")
-  .setDesc("Automatically open the YouTube quadrant when opening a note with YouTube embed.")
-  .addToggle(toggle =>
-    toggle
-      .setValue(this.plugin.settings.autoOpenQuadrantOnNoteOpen)
-      .onChange(async (value) => {
-        this.plugin.settings.autoOpenQuadrantOnNoteOpen = value;
-        await this.plugin.saveSettings();
-      })
-  );
+
     }
   }
