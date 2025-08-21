@@ -57,7 +57,9 @@ function readingClickHandler(app: App) {
 
     event.preventDefault();
     event.stopPropagation();
-    (event as any).stopImmediatePropagation?.();
+    if (typeof event.stopImmediatePropagation === "function"){
+        event.stopImmediatePropagation();
+      }
 
     await openYouTubeLinkInSideView(app, href, { attachToFrontmatter: false });
   };

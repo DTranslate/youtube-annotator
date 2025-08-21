@@ -84,8 +84,8 @@ export class PlayerWrapper {
 
 
   destroy() {
-    if (typeof (this.player as any).destroy === "function") {
-      (this.player as any).destroy();
+    if (typeof this.player.destroy === "function") {
+      this.player.destroy();
     }
   }
 }

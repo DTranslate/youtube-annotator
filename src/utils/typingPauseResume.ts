@@ -34,17 +34,19 @@ export function registerTypingPauseResume(
 
     // Wrapper helpers that do not use ?? on void-returning methods
     const getState = (): number | undefined => {
-      if (typeof (pw as any).getPlayerState === "function") return (pw as any).getPlayerState();
-      if (typeof (pw as any).getState === "function") return (pw as any).getState();
-      return undefined;
+      //if (typeof (pw as any).getPlayerState === "function") return (pw as any).getPlayerState();
+      //if (typeof (pw as any).getState === "function") return (pw as any).getState();
+      return pw.getState?.();
     };
     const pause = (): void => {
-      if (typeof (pw as any).pauseVideo === "function") (pw as any).pauseVideo();
-      else if (typeof (pw as any).pause === "function") (pw as any).pause();
+      //if (typeof (pw as any).pauseVideo === "function") (pw as any).pauseVideo();
+      //else if (typeof (pw as any).pause === "function") (pw as any).pause();
+      return pw.pause?.();
     };
     const play = (): void => {
-      if (typeof (pw as any).playVideo === "function") (pw as any).playVideo();
-      else if (typeof (pw as any).play === "function") (pw as any).play();
+      //if (typeof (pw as any).playVideo === "function") (pw as any).playVideo();
+      //else if (typeof (pw as any).play === "function") (pw as any).play();
+      return pw.play?.();
     };
 
     // Auto-pause immediately if typing while playing
