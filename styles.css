@@ -66,3 +66,16 @@ a[href^="#go2saved-"], a[href^="ytstamp://"] {
 .yt-url-input {
   width: 100%;
 }
+/* Archive media */
+.ya-media-wrap { display:block; width:100%; }
+.ya-media-el   { display:block; width:100%; max-height:60vh; }
+
+/* Archive clip controls live inside the existing yt-toolbar */
+.yt-toolbar .ya-clip-controls {
+  display:flex;
+  gap:0.5rem;
+  align-items:center;
+  margin-left:auto; /* shove to the right; remove if you prefer left */
+}
+.yt-toolbar .ya-clip-controls > button { cursor:pointer; }
+

@@ -3,6 +3,7 @@
 
 import { Notice } from "obsidian";
 import { YoutubeAnnotatorSettings } from "../settings";
+import { Script } from "vm"
 
 export async function createYouTubePlayer(
   elementId: string | HTMLElement,
@@ -38,4 +39,10 @@ export async function createYouTubePlayer(
 );
 
   });
+  
 }
+
+
+
+
+// Ends here createYouTubePlayer.ts

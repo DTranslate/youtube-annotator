@@ -34,11 +34,11 @@ function readingClickHandler(app: App) {
     const href = (a.getAttribute("href") || a.getAttribute("data-href") || "").trim();
     if (!href) return;
 
-    // ✅ our timestamp anchors
-    if (href && href.startsWith(anchorPrefix)) {
+    // ✅ our timestamp anchors (#go2saved-XXXX) — jump YT or Archive
+    if (href.startsWith(anchorPrefix)) {
       event.preventDefault();
       event.stopPropagation();
-      if (typeof event.stopImmediatePropagation === "function"){
+      if (typeof event.stopImmediatePropagation === "function") {
         event.stopImmediatePropagation();
       }
 
@@ -46,10 +46,29 @@ function readingClickHandler(app: App) {
       if (!Number.isFinite(seconds)) return;
 
       const leaf = app.workspace.getLeavesOfType(VIEW_TYPE_YOUTUBE_ANNOTATOR).first();
-      const view = leaf?.view as YouTubeView | undefined;
+      if (!leaf) { new Notice("Player not running.", 2000); return; }
 
+      const view = leaf.view as YouTubeView | undefined;
+
+      // Prefer unified seeker if present (handles YT + Archive)
+      if (typeof (view as any)?.seekToSeconds === "function") {
+        (view as any).seekToSeconds(seconds);
+        new Notice(`To ${formatHMS(seconds)}`, 2000);
+        return;
+      }
+
+      // Fallback: YouTube
       if (view?.playerWrapper?.isPlayerReady()) {
         view.playerWrapper.seekTo(seconds, true);
+        new Notice(`To ${formatHMS(seconds)}`, 2000);
+        return;
+      }
+
+      // Fallback: native Archive <audio>/<video>
+      const mediaEl = (view as any)?._archiveMediaEl as HTMLMediaElement | undefined;
+      if (mediaEl && "currentTime" in mediaEl) {
+        try { mediaEl.currentTime = seconds; } catch {}
+        mediaEl.play?.().catch(() => {});
         new Notice(`To ${formatHMS(seconds)}`, 2000);
       } else {
         new Notice("Player not running.", 2000);
@@ -57,18 +76,18 @@ function readingClickHandler(app: App) {
       return;
     }
 
-    // 🆕 normal YouTube links → open in side view
+    // 🎯 Normal YouTube links in Reading mode → open in side view
     if (isYouTubeUrl(href)) {
       event.preventDefault();
       event.stopPropagation();
-      if (typeof event.stopImmediatePropagation === "function"){
+      if (typeof event.stopImmediatePropagation === "function") {
         event.stopImmediatePropagation();
       }
 
       const videoId = extractVideoIdFromUrl(href);
       if (!videoId) return;
 
-      let right = app.workspace.getRightLeaf(false) || app.workspace.getRightLeaf(true);
+      const right = app.workspace.getRightLeaf(false) || app.workspace.getRightLeaf(true);
       if (!right) return;
       await right.setViewState({
         type: VIEW_TYPE_YOUTUBE_ANNOTATOR,
@@ -81,6 +100,7 @@ function readingClickHandler(app: App) {
     }
   };
 }
+
 
 // ---- Live Preview helpers
 function pickHrefFromDom(e: MouseEvent): string | null {
@@ -161,13 +181,23 @@ function livePreviewHandler(app: App) {
 
     const leaf = app.workspace.getLeavesOfType(VIEW_TYPE_YOUTUBE_ANNOTATOR).first();
     const yt = leaf?.view as YouTubeView | undefined;
+
+    // ⬇️ Archive native media fallback
+    const anyView: any = yt;
+    const mediaEl = anyView?._archiveMediaEl as HTMLMediaElement | undefined;
+
     if (yt?.playerWrapper?.isPlayerReady()) {
       yt.playerWrapper.seekTo(seconds, true);
+      new Notice(`To ${formatHMS(seconds)}`, 2000);
+    } else if (mediaEl && "currentTime" in mediaEl) {
+      try { mediaEl.currentTime = seconds; } catch {}
+      mediaEl.play?.().catch(() => {});
       new Notice(`To ${formatHMS(seconds)}`, 2000);
     } else {
       new Notice("Play & try again.", 2000);
     }
     return true;
+
   };
 }
 
