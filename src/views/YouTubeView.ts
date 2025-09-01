@@ -1,5 +1,5 @@
 // src/views/YouTubeView.ts
-import { ItemView, Notice, WorkspaceLeaf, TFile, parseYaml, MarkdownView  } from "obsidian";
+import { ItemView, Notice, WorkspaceLeaf, TFile, parseYaml, MarkdownView, Plugin  } from "obsidian";
 import { PlayerWrapper } from "../youtube/playerWrapper";
 import { VIEW_TYPE_YOUTUBE_ANNOTATOR, SAVED_TIME_ANCHOR_PREFIX } from "../constants";
 import type YoutubeAnnotatorPlugin from "../main";
@@ -490,6 +490,14 @@ clipBtn.onclick = async () => {
   };
   el.addEventListener("timeupdate", stop);
 };
+// --- Helper: Insert embed into active editor ---
+function insertClipEmbed(md: MarkdownView, relPath: string, startSec: number, endSec: number): void {
+  const label = `${formatHMS(startSec)}–${formatHMS(endSec)}`;
+  const embed = `\n![[${relPath}]]  (🎧 ${label})\n`;
+  const cursor = md.editor.getCursor();
+  md.editor.replaceRange(embed, cursor);
+  md.editor.scrollIntoView({ from: cursor, to: cursor });
+}
 
 (YouTubeView as any).prototype.saveArchiveClip = async function (
   this: YouTubeView,
@@ -498,6 +506,7 @@ clipBtn.onclick = async () => {
 ): Promise<void> {
   const app = this.app;
 
+  // --- Validate the Archive media element ---
   const mediaEl = (this as any)._archiveMediaEl as unknown;
   if (!(mediaEl instanceof HTMLMediaElement)) {
     new Notice("Archive player not ready.", 1800);
@@ -505,20 +514,31 @@ clipBtn.onclick = async () => {
   }
   const el: HTMLMediaElement = mediaEl;
 
-  // Normalize & cap range
+  // --- Normalize & hard-cap to 60s ---
   let s = Math.max(0, Math.min(startSec, endSec));
   let e = Math.max(startSec, endSec);
   if (e - s > 60) e = s + 60;
+  const durationMs = Math.max(1, Math.floor((e - s) * 1000));
 
-  // --- Clone media for isolated recording ---
+  // Prevent overlapping jobs
+  if ((this as any)._isClipping) {
+    new Notice("Already clipping in progress…", 1200);
+    return;
+  }
+  (this as any)._isClipping = true;
+
+  // --- Build a hidden, controlled clone ---
   const clone = el.cloneNode(true) as HTMLMediaElement;
-  clone.muted = true;
-  clone.currentTime = s;
+  // IMPORTANT:
+  //   - Do NOT set clone.muted or clone.volume (they can zero the WebAudio path).
+  //   - Keep it off-screen so it won’t distract the UI.
   clone.style.position = "absolute";
   clone.style.left = "-9999px";
+  clone.style.width = "1px";
+  clone.style.height = "1px";
   document.body.appendChild(clone);
 
-  // --- Ensure blob source ---
+  // If the source is not a blob (CORS risk), fetch → blob → blob URL
   try {
     const currentSrc = clone.currentSrc || clone.getAttribute("src") || "";
     if (currentSrc && !currentSrc.startsWith("blob:")) {
@@ -526,6 +546,7 @@ clipBtn.onclick = async () => {
       if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`);
       const blob = await resp.blob();
       const blobUrl = URL.createObjectURL(blob);
+
       clone.pause?.();
       clone.removeAttribute("src");
       while (clone.firstChild) clone.removeChild(clone.firstChild);
@@ -537,84 +558,151 @@ clipBtn.onclick = async () => {
       });
 
       clone.addEventListener("ended", () => URL.revokeObjectURL(blobUrl), { once: true });
+    } else {
+      if (Number.isNaN(clone.duration) || !clone.duration) {
+        await new Promise<void>((res, rej) => {
+          clone.addEventListener("loadedmetadata", () => res(), { once: true });
+          clone.addEventListener("error", () => rej(new Error("Metadata load failed")), { once: true });
+        });
+      }
     }
   } catch (err) {
-    console.warn("ensureBlobSrc failed:", err);
+    console.warn("[Archive] ensureBlobSrc failed:", err);
     new Notice("Could not prepare media for capture.", 2000);
+    (this as any)._isClipping = false;
     clone.remove();
     return;
   }
 
-  // --- Get audio stream ---
-  const stream = (el as any).captureStream?.();
-  if (!stream || stream.getAudioTracks().length === 0) {
-    new Notice("No audio track detected or unsupported browser.", 2500);
-    clone.remove();
-    return;
-  }
+  // --- Pause main so UI doesn't drift; resume later at `e` ---
+  const wasPlaying = !el.paused && !el.ended;
+  try { el.pause(); } catch {}
 
-  // --- Record ---
-  const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-    ? "audio/webm;codecs=opus"
-    : undefined;
-  const mrOpts: MediaRecorderOptions = { mimeType: mime, audioBitsPerSecond: 64000 };
-
-  let recorder: MediaRecorder;
+  // --- Seek clone to `s` and wait for stability before recording ---
+  try { clone.currentTime = s; } catch {}
   try {
-    recorder = new MediaRecorder(stream, mrOpts);
-  } catch {
-    recorder = new MediaRecorder(stream);
-  }
-
-  const chunks: BlobPart[] = [];
-  const done = new Promise<Blob>((resolve, reject) => {
-    recorder.ondataavailable = (ev: Event) => {
-      const data = (ev as any).data;
-      if (data && data.size) chunks.push(data);
-    };
-    recorder.onerror = (ev: Event) => {
-      const err = (ev as any).error;
-      reject(err instanceof Error ? err : new Error("Recording error"));
-    };
-    recorder.onstop = () => resolve(new Blob(chunks, { type: "audio/webm" }));
-  });
-
-  const durationMs = Math.max(1, Math.floor((e - s) * 1000));
-  try {
-    await clone.play();
-    recorder.start(200);
+    await new Promise<void>((res, rej) => {
+      let seeked = false, canplay = false;
+      const done = () => (seeked && canplay) && res();
+      clone.addEventListener("seeked", () => { seeked = true; done(); }, { once: true });
+      clone.addEventListener("canplay", () => { canplay = true; done(); }, { once: true });
+      clone.addEventListener("error", () => rej(new Error("Seek/canplay failed")), { once: true });
+    });
   } catch (err) {
-    console.warn("Playback or recording failed:", err);
+    console.warn("[Archive] Seek prepare failed:", err);
+    new Notice("Could not seek to start time.", 2000);
+    (this as any)._isClipping = false;
     clone.remove();
-    new Notice("Could not start recording.", 2000);
+    try { el.currentTime = e; if (wasPlaying) await el.play(); } catch {}
     return;
   }
 
-  const stopTimer = window.setTimeout(() => {
-    try { recorder.stop(); } catch {}
-  }, durationMs + 120);
-
-  let blob: Blob;
-  try {
-    blob = await done;
-  } catch (err) {
-    console.warn("Recording failed:", err);
-    new Notice("Recording failed. Try again.", 2000);
+  // --- AudioWorklet-based PCM capture → WAV (no MediaRecorder) ---
+  const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
+  if (!AudioCtx) {
+    (this as any)._isClipping = false;
     clone.remove();
+    new Notice("Web Audio not supported in this browser.", 2500);
+    try { el.currentTime = e; if (wasPlaying) await el.play(); } catch {}
+    return;
+  }
+
+  const audioCtx: AudioContext = new AudioCtx();
+
+  // Tiny worklet to collect mono PCM
+  const workletCode = `
+    class PCMRecorderProcessor extends AudioWorkletProcessor {
+      process(inputs) {
+        const input = inputs[0];
+        if (!input || input.length === 0) return true;
+        const ch0 = input[0] || new Float32Array(128);
+        const frames = ch0.length;
+        let mono = new Float32Array(frames);
+        if (input.length > 1 && input[1]) {
+          const ch1 = input[1];
+          for (let i = 0; i < frames; i++) mono[i] = 0.5 * (ch0[i] + ch1[i]);
+        } else {
+          mono.set(ch0);
+        }
+        this.port.postMessage(mono, [mono.buffer]);
+        return true;
+      }
+    }
+    registerProcessor('pcm-recorder', PCMRecorderProcessor);
+  `;
+  const workletBlob = new Blob([workletCode], { type: "application/javascript" });
+  const workletURL = URL.createObjectURL(workletBlob);
+  try {
+    await audioCtx.audioWorklet.addModule(workletURL);
+  } catch (err) {
+    URL.revokeObjectURL(workletURL);
+    audioCtx.close();
+    (this as any)._isClipping = false;
+    clone.remove();
+    new Notice("AudioWorklet failed to initialize.", 2500);
+    try { el.currentTime = e; if (wasPlaying) await el.play(); } catch {}
     return;
   } finally {
-    window.clearTimeout(stopTimer);
-    clone.pause();
-    clone.src = "";
-    clone.remove();
+    URL.revokeObjectURL(workletURL);
   }
 
-  if (!blob || blob.size === 0) {
-    new Notice("No audio captured (empty). Try again after a moment of playback.", 2500);
+  const sourceNode = audioCtx.createMediaElementSource(clone);
+  const recorderNode: any = new (window as any).AudioWorkletNode(audioCtx, 'pcm-recorder');
+
+  // Graph: element → worklet (do NOT connect to audioCtx.destination)
+  sourceNode.connect(recorderNode);
+
+  const pcmChunks: Float32Array[] = [];
+  let totalSamples = 0;
+  recorderNode.port.onmessage = (ev: MessageEvent) => {
+    const data = ev.data as Float32Array;
+    pcmChunks.push(data);
+    totalSamples += data.length;
+  };
+
+  try { if (audioCtx.state === "suspended") await audioCtx.resume(); } catch {}
+
+  // Start playback and wait for real flow
+  try { await clone.play(); } catch (err) {
+    console.warn("[Archive] Hidden playback failed:", err);
+    cleanup();
+    (this as any)._isClipping = false;
+    clone.remove();
+    new Notice("Could not start hidden playback.", 2000);
+    try { el.currentTime = e; if (wasPlaying) await el.play(); } catch {}
+    return;
+  }
+  await new Promise<void>((res) => {
+    const onTU = () => { clone.removeEventListener("timeupdate", onTU); res(); };
+    clone.addEventListener("timeupdate", onTU, { once: true });
+    setTimeout(() => { clone.removeEventListener("timeupdate", onTU); res(); }, 250);
+  });
+
+  // Stop after window
+  let stopTimer: number | undefined = window.setTimeout(() => {
+    try { clone.pause(); } catch {}
+  }, durationMs + 50);
+
+  // Wait slightly past duration to ensure tail is captured
+  await new Promise<void>((res) => setTimeout(res, durationMs + 120));
+
+  const sampleRate = audioCtx.sampleRate;
+  const wavBlob = encodeWAV(pcmChunks, totalSamples, sampleRate);
+
+  if (stopTimer) window.clearTimeout(stopTimer);
+  cleanup();
+  try { clone.pause(); } catch {}
+  clone.src = "";
+  clone.remove();
+  (this as any)._isClipping = false;
+
+  if (!wavBlob || wavBlob.size === 0) {
+    new Notice("No audio captured (empty).", 2500);
+    try { el.currentTime = e; if (wasPlaying) await el.play(); } catch {}
     return;
   }
 
-  // --- Save ---
+  // --- Persist clip to vault ---
   const activeFile = app.workspace.getActiveFile();
   const baseFolder =
     activeFile?.parent?.path ||
@@ -627,46 +715,93 @@ clipBtn.onclick = async () => {
       await app.vault.createFolder(clipsFolder);
     }
   } catch (err) {
-    console.warn("Folder creation failed:", err);
+    console.warn("[Archive] Folder creation failed:", err);
     new Notice("Could not create clips folder.", 2000);
+    try { el.currentTime = e; if (wasPlaying) await el.play(); } catch {}
     return;
   }
 
   const now = new Date();
-  const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}_` +
-                `${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}${String(now.getSeconds()).padStart(2, "0")}`;
-  const clipName = `Clip_${stamp}_${Math.floor(s)}-${Math.floor(e)}.webm`;
+  const stamp =
+    `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}_` +
+    `${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}${String(now.getSeconds()).padStart(2, "0")}`;
+  const clipName = `Clip_${stamp}_${Math.floor(s)}-${Math.floor(e)}.wav`;
   const clipPath = `${clipsFolder}/${clipName}`;
 
   try {
-    const buf = await blob.arrayBuffer();
+    const buf = await wavBlob.arrayBuffer();
     await (app.vault.adapter as any).writeBinary(clipPath, buf);
   } catch (err) {
-    console.warn("Write failed:", err);
+    console.warn("[Archive] Write failed:", err);
     new Notice("Could not save audio clip.", 2000);
+    try { el.currentTime = e; if (wasPlaying) await el.play(); } catch {}
     return;
   }
 
-  // --- Insert embed ---
+  // --- Insert embed (or copy fallback) ---
   const rel = `audioclips/${clipName}`;
-  const label = `${formatHMS(s)}–${formatHMS(e)}`;
-  const embed = `\n![[${rel}]]  (🎧 ${label})\n`;
-
   const md = app.workspace.getActiveViewOfType(MarkdownView);
   if (md?.editor) {
-    md.editor.replaceRange(embed, md.editor.getCursor());
+    insertClipEmbed(md, rel, s, e);
   } else {
-    await navigator.clipboard.writeText(embed.trim());
+    const label = `${formatHMS(s)}–${formatHMS(e)}`;
+    const fallbackEmbed = `![[${rel}]]  (🎧 ${label})`;
+    await navigator.clipboard.writeText(fallbackEmbed.trim());
     new Notice("Embed copied to clipboard.", 1500);
   }
 
-  // --- Resume main playback ---
+  // --- Auto-resume main player at end marker ---
   try {
     el.currentTime = e;
-    await el.play();
+    if (wasPlaying) await el.play();
   } catch {}
 
-  new Notice(`Saved clip: ${formatHMS(s)}–${formatHMS(e)} (${Math.round(blob.size / 1024)} KB)`, 2000);
+  new Notice(`Saved clip: ${formatHMS(s)}–${formatHMS(e)} (${Math.round(wavBlob.size / 1024)} KB)`, 2000);
+
+  // ===== Helpers =====
+  function cleanup() {
+    try { sourceNode.disconnect(); } catch {}
+    try { recorderNode.disconnect(); } catch {}
+    try { audioCtx.close(); } catch {}
+  }
+
+  function encodeWAV(chunks: Float32Array[], total: number, sampleRate: number): Blob {
+    if (total === 0) return new Blob();
+    const pcm16 = new Int16Array(total);
+    let offset = 0;
+    for (const f32 of chunks) {
+      for (let i = 0; i < f32.length; i++) {
+        let s = Math.max(-1, Math.min(1, f32[i]));
+        pcm16[offset++] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+      }
+    }
+    const bytesPerSample = 2;
+    const blockAlign = 1 * bytesPerSample;
+    const byteRate = sampleRate * blockAlign;
+    const dataSize = pcm16.byteLength;
+    const buffer = new ArrayBuffer(44 + dataSize);
+    const view = new DataView(buffer);
+
+    writeStr(view, 0, "RIFF");
+    view.setUint32(4, 36 + dataSize, true);
+    writeStr(view, 8, "WAVE");
+    writeStr(view, 12, "fmt ");
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, byteRate, true);
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, 16, true);
+    writeStr(view, 36, "data");
+    view.setUint32(40, dataSize, true);
+    new Uint8Array(buffer, 44).set(new Uint8Array(pcm16.buffer));
+    return new Blob([buffer], { type: "audio/wav" });
+  }
+
+  function writeStr(view: DataView, offset: number, str: string) {
+    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+  }
 };
 
 
@@ -741,6 +876,7 @@ clipBtn.onclick = async () => {
   try { el?.remove(); } catch {}
   (this as any)._archiveMediaEl = undefined;
 };
+
 
 
 // Ensure pause on unload for wrapped renderArchiveFromUrl (defensive)
