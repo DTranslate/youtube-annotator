@@ -398,6 +398,25 @@ plugin.addCommand({
   },
 });
 // =================== ARCHIVE: TIMESTAMP & CLIP COMMANDS — END ===================
+plugin.addCommand({
+  id: "archive-test-clip-5s",
+  name: "Archive: Test save 5s clip",
+  callback: async () => {
+    const leaf = plugin.app.workspace.getLeavesOfType(VIEW_TYPE_YOUTUBE_ANNOTATOR)?.[0];
+    const view: any = leaf?.view;
+    if (!view?._archiveMediaEl) {
+      new Notice("Open a native Archive audio note first (not the iframe).", 2000);
+      return;
+    }
+    try {
+      await view.saveArchiveClip?.(0, 5);
+      new Notice("Test clip saved (0–5s).", 1500);
+    } catch (e) {
+      console.error(e);
+      new Notice("Test clip failed. See console.", 2000);
+    }
+  },
+});
 
 
 

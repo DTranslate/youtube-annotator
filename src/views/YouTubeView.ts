@@ -1,5 +1,5 @@
 // src/views/YouTubeView.ts
-import { ItemView, Notice, WorkspaceLeaf, TFile } from "obsidian";
+import { ItemView, Notice, WorkspaceLeaf, TFile, parseYaml, MarkdownView  } from "obsidian";
 import { PlayerWrapper } from "../youtube/playerWrapper";
 import { VIEW_TYPE_YOUTUBE_ANNOTATOR, SAVED_TIME_ANCHOR_PREFIX } from "../constants";
 import type YoutubeAnnotatorPlugin from "../main";
@@ -9,6 +9,7 @@ import { formatHMS } from "../utils/Time";
 import { extractVideoIdFromFrontmatter } from "../utils/extractVideoId";
 import { captureScreenshot } from "utils/captureScreenshot";
 import { ICON_IDS } from "./icon";
+
 
 export class YouTubeView extends ItemView {
   playerWrapper: PlayerWrapper | null = null;
@@ -73,7 +74,7 @@ export class YouTubeView extends ItemView {
   getVideoSeekAnchor(seconds: number): string {
     return `#seek-${seconds}`;
   }
-
+// =================== YouTube Player Rendering ===================
   async renderPlayer() {
     const container = this.containerEl.children[1];
     container.empty();
@@ -111,7 +112,6 @@ export class YouTubeView extends ItemView {
     const playerContainer = wrap.createDiv({ attr: { id: "yt-player" } });
 
     const tools = container.createDiv({ cls: "yt-toolbar" });
-
     // Timer display when the youtube is playing
     const timeView = tools.createEl("div", {
       text: "0:00:00",
@@ -159,7 +159,6 @@ export class YouTubeView extends ItemView {
       attr: { title: "Change playback speed" },
       cls: "yt-speed-btn",
     });
-
     speedBtn.onclick = () => {
       this.currentSpeedIndex = (this.currentSpeedIndex + 1) % this.speeds.length;
       const newSpeed = this.speeds[this.currentSpeedIndex];
@@ -236,7 +235,7 @@ export class YouTubeView extends ItemView {
       }
     );
   }
-
+// =================== Archive.org Media Rendering ===================
 async renderArchiveFromUrl(url: string, startSeconds?: number): Promise<void> {
   const container = this.containerEl.children[1];
   container.empty();
@@ -254,6 +253,8 @@ async renderArchiveFromUrl(url: string, startSeconds?: number): Promise<void> {
 
   // Toolbar
   const tools = container.createDiv({ cls: "yt-toolbar" });
+  const clipWrap = tools.createEl("div", { cls: "ya-clip-controls" });
+
   const timeView = tools.createEl("div", { text: "0:00:00", cls: "yt-timer-display" });
 
   // Copy timestamp
@@ -265,6 +266,16 @@ async renderArchiveFromUrl(url: string, startSeconds?: number): Promise<void> {
     await navigator.clipboard.writeText(link);
     new Notice(`Copied timeStamp: ${link}`, 1200);
   };
+
+  const markBtn = clipWrap.createEl("button", {
+    text: "⟲",
+    attr: { title: "Mark clip start at current time" },
+  });
+
+  const clipBtn = clipWrap.createEl("button", {
+    text: "✄",
+    attr: { title: "Save clip (start→now), max 60s" },
+  });
 
   // Close button
   const closeBtn = tools.createEl("button", { text: "❌", attr: { title: "Close player" } });
@@ -316,6 +327,8 @@ async renderArchiveFromUrl(url: string, startSeconds?: number): Promise<void> {
       ? `https://archive.org/embed/${id}${(startSeconds && Number.isFinite(startSeconds)) ? `?start=${Math.floor(startSeconds)}` : ""}`
       : url; // last-resort (if caller already supplied embed URL)
     (this as any)._archiveMediaEl = iframe;
+      markBtn.setAttr("disabled", "true");
+      clipBtn.setAttr("disabled", "true");
     // No timer updates for iframe (no currentTime access)
   };
 
@@ -332,14 +345,38 @@ async renderArchiveFromUrl(url: string, startSeconds?: number): Promise<void> {
   el.controls = true;
   el.preload = "metadata";          // make metadata appear
   // DO NOT set crossOrigin unless you need canvas/audio processing; some servers get picky
-  // el.crossOrigin = "anonymous";
+  el.crossOrigin = "anonymous";
+  (this as any)._archiveCurrentUrl = url;
   // Add a <source> with a type to help the browser choose decoders
   const src = el.createEl("source");
-  src.src = url;
-  const typ = guessType(url);
-  if (typ) src.type = typ;
+  src.src = url; //
 
   (this as any)._archiveMediaEl = el;
+  
+
+// ✅ WIRE CLIP BUTTONS *HERE* (native only)
+  markBtn.onclick = () => {
+  const secs = (this as any).getArchiveCurrentTimeSeconds?.();
+  if (secs == null) { new Notice("Player not ready", 1200); return; }
+  (this as any).setArchiveClipStart?.(secs);
+  console.log("[Archive] Clip start set:", secs);
+  new Notice(`Clip start = ${formatHMS(secs)}`, 1200);
+};
+
+clipBtn.onclick = async () => {
+  const now = (this as any).getArchiveCurrentTimeSeconds?.();
+  if (now == null) { new Notice("Player not ready", 1200); return; }
+  const start = (this as any).getArchiveClipStart?.();
+  const s = start != null ? start : Math.max(0, now - 30);
+  const e = Math.max(now, s + 1);
+  console.log("[Archive] Clipping range:", { s, e, now, start });
+  try {
+    await (this as any).saveArchiveClip?.(s, e);
+  } catch (err) {
+    console.error(err);
+    new Notice("Clip failed. See console.", 2000);
+  }
+};    
 
   let settled = false; // whether we committed to native or not
 
@@ -376,10 +413,6 @@ async renderArchiveFromUrl(url: string, startSeconds?: number): Promise<void> {
 
   (this as any)._ensureArchiveCleanupRegistered?.();
 }
-
-
-
-
 }
 
 // ================== ARCHIVE helpers (prototype append-only) ==================
@@ -458,8 +491,186 @@ async renderArchiveFromUrl(url: string, startSeconds?: number): Promise<void> {
   el.addEventListener("timeupdate", stop);
 };
 
-// ================== Unified seeker (YT + Archive) ==================
+(YouTubeView as any).prototype.saveArchiveClip = async function (
+  this: YouTubeView,
+  startSec: number,
+  endSec: number
+): Promise<void> {
+  const app = this.app;
 
+  const mediaEl = (this as any)._archiveMediaEl as unknown;
+  if (!(mediaEl instanceof HTMLMediaElement)) {
+    new Notice("Archive player not ready.", 1800);
+    return;
+  }
+  const el: HTMLMediaElement = mediaEl;
+
+  // Normalize & cap range
+  let s = Math.max(0, Math.min(startSec, endSec));
+  let e = Math.max(startSec, endSec);
+  if (e - s > 60) e = s + 60;
+
+  // --- Clone media for isolated recording ---
+  const clone = el.cloneNode(true) as HTMLMediaElement;
+  clone.muted = true;
+  clone.currentTime = s;
+  clone.style.position = "absolute";
+  clone.style.left = "-9999px";
+  document.body.appendChild(clone);
+
+  // --- Ensure blob source ---
+  try {
+    const currentSrc = clone.currentSrc || clone.getAttribute("src") || "";
+    if (currentSrc && !currentSrc.startsWith("blob:")) {
+      const resp = await fetch(currentSrc);
+      if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`);
+      const blob = await resp.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      clone.pause?.();
+      clone.removeAttribute("src");
+      while (clone.firstChild) clone.removeChild(clone.firstChild);
+      clone.src = blobUrl;
+
+      await new Promise<void>((res, rej) => {
+        clone.addEventListener("loadedmetadata", () => res(), { once: true });
+        clone.addEventListener("error", () => rej(new Error("Blob metadata failed")), { once: true });
+      });
+
+      clone.addEventListener("ended", () => URL.revokeObjectURL(blobUrl), { once: true });
+    }
+  } catch (err) {
+    console.warn("ensureBlobSrc failed:", err);
+    new Notice("Could not prepare media for capture.", 2000);
+    clone.remove();
+    return;
+  }
+
+  // --- Get audio stream ---
+  const stream = (el as any).captureStream?.();
+  if (!stream || stream.getAudioTracks().length === 0) {
+    new Notice("No audio track detected or unsupported browser.", 2500);
+    clone.remove();
+    return;
+  }
+
+  // --- Record ---
+  const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+    ? "audio/webm;codecs=opus"
+    : undefined;
+  const mrOpts: MediaRecorderOptions = { mimeType: mime, audioBitsPerSecond: 64000 };
+
+  let recorder: MediaRecorder;
+  try {
+    recorder = new MediaRecorder(stream, mrOpts);
+  } catch {
+    recorder = new MediaRecorder(stream);
+  }
+
+  const chunks: BlobPart[] = [];
+  const done = new Promise<Blob>((resolve, reject) => {
+    recorder.ondataavailable = (ev: Event) => {
+      const data = (ev as any).data;
+      if (data && data.size) chunks.push(data);
+    };
+    recorder.onerror = (ev: Event) => {
+      const err = (ev as any).error;
+      reject(err instanceof Error ? err : new Error("Recording error"));
+    };
+    recorder.onstop = () => resolve(new Blob(chunks, { type: "audio/webm" }));
+  });
+
+  const durationMs = Math.max(1, Math.floor((e - s) * 1000));
+  try {
+    await clone.play();
+    recorder.start(200);
+  } catch (err) {
+    console.warn("Playback or recording failed:", err);
+    clone.remove();
+    new Notice("Could not start recording.", 2000);
+    return;
+  }
+
+  const stopTimer = window.setTimeout(() => {
+    try { recorder.stop(); } catch {}
+  }, durationMs + 120);
+
+  let blob: Blob;
+  try {
+    blob = await done;
+  } catch (err) {
+    console.warn("Recording failed:", err);
+    new Notice("Recording failed. Try again.", 2000);
+    clone.remove();
+    return;
+  } finally {
+    window.clearTimeout(stopTimer);
+    clone.pause();
+    clone.src = "";
+    clone.remove();
+  }
+
+  if (!blob || blob.size === 0) {
+    new Notice("No audio captured (empty). Try again after a moment of playback.", 2500);
+    return;
+  }
+
+  // --- Save ---
+  const activeFile = app.workspace.getActiveFile();
+  const baseFolder =
+    activeFile?.parent?.path ||
+    (this as any)?.plugin?.settings?.notesFolder ||
+    "YouTube-Annotator/notes";
+
+  const clipsFolder = `${baseFolder}/audioclips`;
+  try {
+    if (!(await app.vault.adapter.exists(clipsFolder))) {
+      await app.vault.createFolder(clipsFolder);
+    }
+  } catch (err) {
+    console.warn("Folder creation failed:", err);
+    new Notice("Could not create clips folder.", 2000);
+    return;
+  }
+
+  const now = new Date();
+  const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}_` +
+                `${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}${String(now.getSeconds()).padStart(2, "0")}`;
+  const clipName = `Clip_${stamp}_${Math.floor(s)}-${Math.floor(e)}.webm`;
+  const clipPath = `${clipsFolder}/${clipName}`;
+
+  try {
+    const buf = await blob.arrayBuffer();
+    await (app.vault.adapter as any).writeBinary(clipPath, buf);
+  } catch (err) {
+    console.warn("Write failed:", err);
+    new Notice("Could not save audio clip.", 2000);
+    return;
+  }
+
+  // --- Insert embed ---
+  const rel = `audioclips/${clipName}`;
+  const label = `${formatHMS(s)}–${formatHMS(e)}`;
+  const embed = `\n![[${rel}]]  (🎧 ${label})\n`;
+
+  const md = app.workspace.getActiveViewOfType(MarkdownView);
+  if (md?.editor) {
+    md.editor.replaceRange(embed, md.editor.getCursor());
+  } else {
+    await navigator.clipboard.writeText(embed.trim());
+    new Notice("Embed copied to clipboard.", 1500);
+  }
+
+  // --- Resume main playback ---
+  try {
+    el.currentTime = e;
+    await el.play();
+  } catch {}
+
+  new Notice(`Saved clip: ${formatHMS(s)}–${formatHMS(e)} (${Math.round(blob.size / 1024)} KB)`, 2000);
+};
+
+
+// ================== Unified seeker (YT + Archive) ==================
 /**
  * Jump the active media to a given second.
  * - For YouTube, uses playerWrapper.seekTo()/setCurrentTime()
@@ -480,7 +691,57 @@ async renderArchiveFromUrl(url: string, startSeconds?: number): Promise<void> {
     try { el.currentTime = s; } catch {}
     el.play?.().catch(() => {});
   }
+  
 };
+
+// Download current archive media as Blob and swap element to blob: URL (same-origin)
+(YouTubeView as any).prototype._ensureArchiveBlobSrc = async function (this: any) {
+  const el = (this as any)._archiveMediaEl as HTMLMediaElement | undefined;
+  const url = (this as any)._archiveCurrentUrl as string | undefined;
+  if (!el || !url) throw new Error("No archive media element or URL.");
+
+  if ((this as any)._archiveBlobUrl) return; // already swapped
+
+  const resp = await fetch(url, { method: "GET" });
+  if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`);
+  const blob = await resp.blob();
+  const blobUrl = URL.createObjectURL(blob);
+
+  try {
+    el.pause?.();
+    el.removeAttribute("src");
+    while (el.firstChild) el.removeChild(el.firstChild);
+    el.src = blobUrl;
+  } catch {}
+
+  (this as any)._archiveBlobUrl = blobUrl;
+
+  await new Promise<void>((res, rej) => {
+    const ok = () => { el.removeEventListener("loadedmetadata", ok); res(); };
+    const err = () => { el.removeEventListener("error", err); rej(new Error("Blob metadata failed")); };
+    el.addEventListener("loadedmetadata", ok, { once: true });
+    el.addEventListener("error", err, { once: true });
+  });
+};
+(YouTubeView as any).prototype._disposeArchiveMedia = function (this: any) {
+  const el = (this as any)._archiveMediaEl as HTMLMediaElement | HTMLIFrameElement | undefined;
+  try { if (el && "pause" in el) (el as HTMLMediaElement).pause(); } catch {}
+  if (el instanceof HTMLMediaElement) {
+    try {
+      el.removeAttribute("src");
+      while (el.firstChild) el.removeChild(el.firstChild);
+      el.load?.();
+    } catch {}
+  } else if (el instanceof HTMLIFrameElement) {
+    try { el.src = "about:blank"; } catch {}
+  }
+  // 🔻 revoke blob URL if we created one
+  const blobUrl = (this as any)._archiveBlobUrl as string | undefined;
+  if (blobUrl) { try { URL.revokeObjectURL(blobUrl); } catch {} (this as any)._archiveBlobUrl = undefined; }
+  try { el?.remove(); } catch {}
+  (this as any)._archiveMediaEl = undefined;
+};
+
 
 // Ensure pause on unload for wrapped renderArchiveFromUrl (defensive)
 (() => {
@@ -497,3 +758,6 @@ async renderArchiveFromUrl(url: string, startSeconds?: number): Promise<void> {
     };
   }
 })();
+
+
+// ================== YouTubeView.ts ends here ==================

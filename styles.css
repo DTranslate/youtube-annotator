@@ -78,4 +78,5 @@ a[href^="#go2saved-"], a[href^="ytstamp://"] {
   margin-left:auto; /* shove to the right; remove if you prefer left */
 }
 .yt-toolbar .ya-clip-controls > button { cursor:pointer; }
-
+.yt-toolbar .ya-clip-controls { display:flex; gap:0.5rem; align-items:center; margin-left:auto; }
+.yt-toolbar .ya-clip-controls > button { cursor:pointer; }
