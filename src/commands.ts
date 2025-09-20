@@ -258,6 +258,14 @@ fmLines.push("---");
 // ===== INDEX TABLE (wiki-links, no alias) — REPLACE THIS WHOLE isIndex BLOCK =====
 
 if (isIndex) {
+  //MP3-only filter (filename or format hint)
+  const mp3Only = (t: any) =>
+    /\.mp3$/i.test(t?.name || "") ||
+    /(^|\s)MP3(\s|$)/i.test((t as any)?.format || "") ||
+    /VBR\s*MP3/i.test((t as any)?.format || "");
+
+  const tracks = (r.info.tracks || []).filter(mp3Only);
+
   const lines: string[] = [];
   lines.push(
     `> This item contains **${r.info.track_count}** tracks. Click a Note link to create/open the per-track note.\n`
@@ -265,7 +273,7 @@ if (isIndex) {
   lines.push(`| # | Track | Note | Duration |`);
   lines.push(`|---|-------|------|----------|`);
 
-  r.info.tracks.forEach((t) => {
+  tracks.forEach((t) => {
     // sanitize the archive filename for a safe note filename
     const safeName = t.name.replace(/[\/\\:*?"<>|]/g, "-");  // keep existing behavior
 
@@ -327,7 +335,7 @@ if (isIndex) {
 // =================== ARCHIVE: NEW NOTE (FOLDERED INDEX, LEAN YAML) — END ===================
 
 
-// =================== ARCHIVE: TIMESTAMP & CLIP COMMANDS — START ===================
+// =================== ARCHIVE: TIMESTAMP START ===================
 
 plugin.addCommand({
   id: "archive-copy-timestamp",
@@ -352,7 +360,8 @@ plugin.addCommand({
     const view: any = leaf?.view;
     const secs = view?.getArchiveCurrentTimeSeconds?.();
     if (secs == null) { new Notice("Timestamp unavailable (no native archive media)."); return; }
-    const link = `[${formatHMS(secs)}](#seek-${secs})`;
+    const link = `[${formatHMS(secs)}](#${SAVED_TIME_ANCHOR_PREFIX}${secs})`;
+    //const link = `[${formatHMS(secs)}](#seek-${secs})`;
     const editor = plugin.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
     if (!editor) { await navigator.clipboard.writeText(link); new Notice(`Copied: ${link}`); return; }
     const cur = editor.getCursor();
@@ -361,63 +370,79 @@ plugin.addCommand({
   },
 });
 
-// --- Clip start / insert ---
+// =================== ARCHIVE: TIMESTAMP END HERE AND CLIP CAPTURE STARTS HERE ===================
+// In main.ts, inside onload():
+const getAnnotView = () =>
+  plugin.app.workspace.getLeavesOfType(VIEW_TYPE_YOUTUBE_ANNOTATOR)?.[0]?.view as any;
+
+const getArchiveEl = (view: any): HTMLMediaElement | null =>
+  (view && view._archiveMediaEl instanceof HTMLMediaElement) ? view._archiveMediaEl : null;
+
 plugin.addCommand({
-  id: "archive-set-clip-start",
-  name: "Archive: Set clip start",
+  id: "archive-mark-start",
+  name: "Archive: Mark start (in-point)",
+  hotkeys: [{ modifiers: ["Mod", "Shift"], key: "[" }], // Cmd/Ctrl+Shift+[
   callback: () => {
-    const leaf = plugin.app.workspace.getLeavesOfType(VIEW_TYPE_YOUTUBE_ANNOTATOR)?.[0];
-    const view: any = leaf?.view;
-    const secs = view?.getArchiveCurrentTimeSeconds?.();
-    if (secs == null) { new Notice("Clip start unavailable (no native archive media)."); return; }
-    view?.setArchiveClipStart?.(secs);
-    new Notice(`Clip start set at ${formatHMS(secs)}`, 1200);
+    const view = getAnnotView();
+    const el = getArchiveEl(view);
+    if (!el) return new Notice("Open a native Archive audio note first.", 1800);
+    if (view._isClipping) return new Notice("Clipping in progress…", 1200);
+    view._clipMarkSec = el.currentTime ?? 0;
+    new Notice(`Marked start @ ${formatHMS(view._clipMarkSec)}`, 1200);
   },
 });
 
 plugin.addCommand({
-  id: "archive-insert-clip",
-  name: "Archive: Insert clip (start→now)",
+  id: "archive-clip-from-mark",
+  name: "Archive: Clip from mark → now",
+  hotkeys: [{ modifiers: ["Mod", "Shift"], key: "]" }], // Cmd/Ctrl+Shift+]
   callback: async () => {
-    const leaf = plugin.app.workspace.getLeavesOfType(VIEW_TYPE_YOUTUBE_ANNOTATOR)?.[0];
-    const view: any = leaf?.view;
-    const start = view?.getArchiveClipStart?.();
-    const end = view?.getArchiveCurrentTimeSeconds?.();
-    if (start == null || end == null) { new Notice("Set a clip start and ensure native media is playing."); return; }
-    const s = Math.min(start, end), e = Math.max(start, end);
-    const clip = `[[${formatHMS(s)}–${formatHMS(e)}]]`;
+    const view = getAnnotView();
+    const el = getArchiveEl(view);
+    if (!el) return new Notice("Open a native Archive audio note first.", 1800);
+    if (view._isClipping) return new Notice("Clipping in progress…", 1200);
 
-    const editor = plugin.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
-    if (!editor) { await navigator.clipboard.writeText(clip); new Notice(`Copied: ${clip}`); return; }
-    const cur = editor.getCursor();
-    editor.replaceRange(`${clip} `, cur);
-    new Notice(`Inserted clip: ${clip}`, 1200);
+    const s: number | undefined = view._clipMarkSec;
+    if (typeof s !== "number") return new Notice("No start mark. Press Mark start first.", 1800);
 
-    // optional: immediate audition
-    view?.playArchiveRange?.(s, e);
-  },
-});
-// =================== ARCHIVE: TIMESTAMP & CLIP COMMANDS — END ===================
-plugin.addCommand({
-  id: "archive-test-clip-5s",
-  name: "Archive: Test save 5s clip",
-  callback: async () => {
-    const leaf = plugin.app.workspace.getLeavesOfType(VIEW_TYPE_YOUTUBE_ANNOTATOR)?.[0];
-    const view: any = leaf?.view;
-    if (!view?._archiveMediaEl) {
-      new Notice("Open a native Archive audio note first (not the iframe).", 2000);
-      return;
-    }
+    const e = el.currentTime ?? 0;
+    const a = Math.min(s, e), b = Math.max(s, e);
     try {
-      await view.saveArchiveClip?.(0, 5);
-      new Notice("Test clip saved (0–5s).", 1500);
-    } catch (e) {
-      console.error(e);
-      new Notice("Test clip failed. See console.", 2000);
+      await view.saveArchiveClip?.(a, b);
+    } finally {
+      view._clipMarkSec = undefined; // reset mark
     }
   },
 });
 
+plugin.addCommand({
+  id: "archive-backclip-10s",
+  name: "Archive: Save last 10s (back-clip)",
+  hotkeys: [{ modifiers: ["Mod", "Shift"], key: "." }], // Cmd/Ctrl+Shift+.
+  callback: async () => {
+    const view = getAnnotView();
+    const el = getArchiveEl(view);
+    if (!el) return new Notice("Open a native Archive audio note first.", 1800);
+    if (view._isClipping) return new Notice("Clipping in progress…", 1200);
+
+    const end = el.currentTime ?? 0;
+    const start = Math.max(0, end - 10);
+    await view.saveArchiveClip?.(start, end);
+  },
+});
+
+plugin.addCommand({
+  id: "archive-cancel-mark",
+  name: "Archive: Cancel start mark",
+  callback: () => {
+    const view = getAnnotView();
+    if (!view) return;
+    view._clipMarkSec = undefined;
+    new Notice("Start mark cleared.", 1000);
+  },
+});
+
+// =================== ARCHIVE: CLIP CAPTURE ENDS HERE ===================
 
 
 

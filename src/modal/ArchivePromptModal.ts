@@ -12,8 +12,8 @@ export class ArchivePromptModal extends Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.empty();
-    this.titleEl.setText("Open Archive.org URL");
-
+    //this.titleEl.setText("Open Archive.org URL");
+    contentEl.createEl("h3", { text: "Paste Archive Audio URL" });
     new Setting(contentEl)
       .setName("URL")
       .setDesc("Paste an Archive.org item or direct file link")

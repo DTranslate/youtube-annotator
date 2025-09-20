@@ -1,5 +1,5 @@
 // src/views/YouTubeView.ts
-import { ItemView, Notice, WorkspaceLeaf, TFile, parseYaml, MarkdownView, Plugin  } from "obsidian";
+import { ItemView, Notice, WorkspaceLeaf, TFile, parseYaml, MarkdownView, Plugin, App  } from "obsidian";
 import { PlayerWrapper } from "../youtube/playerWrapper";
 import { VIEW_TYPE_YOUTUBE_ANNOTATOR, SAVED_TIME_ANCHOR_PREFIX } from "../constants";
 import type YoutubeAnnotatorPlugin from "../main";
@@ -268,7 +268,7 @@ async renderArchiveFromUrl(url: string, startSeconds?: number): Promise<void> {
   };
 
   const markBtn = clipWrap.createEl("button", {
-    text: "⟲",
+    text: "🎧",
     attr: { title: "Mark clip start at current time" },
   });
 
@@ -354,7 +354,7 @@ async renderArchiveFromUrl(url: string, startSeconds?: number): Promise<void> {
   (this as any)._archiveMediaEl = el;
   
 
-// ✅ WIRE CLIP BUTTONS *HERE* (native only)
+// WIRE CLIP BUTTONS *HERE* (native only)
   markBtn.onclick = () => {
   const secs = (this as any).getArchiveCurrentTimeSeconds?.();
   if (secs == null) { new Notice("Player not ready", 1200); return; }
@@ -506,7 +506,11 @@ function insertClipEmbed(md: MarkdownView, relPath: string, startSec: number, en
 ): Promise<void> {
   const app = this.app;
 
-  // --- Validate the Archive media element ---
+  // ---- settings you can tweak ----
+  const TARGET_KBPS = 48; // 32–64 are good speech bitrates
+  // --------------------------------
+
+  // 1) Validate archive media
   const mediaEl = (this as any)._archiveMediaEl as unknown;
   if (!(mediaEl instanceof HTMLMediaElement)) {
     new Notice("Archive player not ready.", 1800);
@@ -514,31 +518,28 @@ function insertClipEmbed(md: MarkdownView, relPath: string, startSec: number, en
   }
   const el: HTMLMediaElement = mediaEl;
 
-  // --- Normalize & hard-cap to 60s ---
+  // 2) Normalize window
   let s = Math.max(0, Math.min(startSec, endSec));
   let e = Math.max(startSec, endSec);
   if (e - s > 60) e = s + 60;
   const durationMs = Math.max(1, Math.floor((e - s) * 1000));
 
-  // Prevent overlapping jobs
+  // Guard concurrent runs
   if ((this as any)._isClipping) {
     new Notice("Already clipping in progress…", 1200);
     return;
   }
   (this as any)._isClipping = true;
 
-  // --- Build a hidden, controlled clone ---
+  // 3) Hidden clone (DO NOT set volume/muted)
   const clone = el.cloneNode(true) as HTMLMediaElement;
-  // IMPORTANT:
-  //   - Do NOT set clone.muted or clone.volume (they can zero the WebAudio path).
-  //   - Keep it off-screen so it won’t distract the UI.
   clone.style.position = "absolute";
   clone.style.left = "-9999px";
   clone.style.width = "1px";
   clone.style.height = "1px";
   document.body.appendChild(clone);
 
-  // If the source is not a blob (CORS risk), fetch → blob → blob URL
+  // Blob-ify non-blob sources (to dodge CORS)
   try {
     const currentSrc = clone.currentSrc || clone.getAttribute("src") || "";
     if (currentSrc && !currentSrc.startsWith("blob:")) {
@@ -546,24 +547,16 @@ function insertClipEmbed(md: MarkdownView, relPath: string, startSec: number, en
       if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`);
       const blob = await resp.blob();
       const blobUrl = URL.createObjectURL(blob);
-
       clone.pause?.();
       clone.removeAttribute("src");
       while (clone.firstChild) clone.removeChild(clone.firstChild);
       clone.src = blobUrl;
 
-      await new Promise<void>((res, rej) => {
-        clone.addEventListener("loadedmetadata", () => res(), { once: true });
-        clone.addEventListener("error", () => rej(new Error("Blob metadata failed")), { once: true });
-      });
-
+      await once(clone, "loadedmetadata");
       clone.addEventListener("ended", () => URL.revokeObjectURL(blobUrl), { once: true });
     } else {
       if (Number.isNaN(clone.duration) || !clone.duration) {
-        await new Promise<void>((res, rej) => {
-          clone.addEventListener("loadedmetadata", () => res(), { once: true });
-          clone.addEventListener("error", () => rej(new Error("Metadata load failed")), { once: true });
-        });
+        await once(clone, "loadedmetadata");
       }
     }
   } catch (err) {
@@ -574,20 +567,17 @@ function insertClipEmbed(md: MarkdownView, relPath: string, startSec: number, en
     return;
   }
 
-  // --- Pause main so UI doesn't drift; resume later at `e` ---
+  // Pause main; we’ll resume at e
   const wasPlaying = !el.paused && !el.ended;
   try { el.pause(); } catch {}
 
-  // --- Seek clone to `s` and wait for stability before recording ---
+  // 4) Seek → ready
   try { clone.currentTime = s; } catch {}
   try {
-    await new Promise<void>((res, rej) => {
-      let seeked = false, canplay = false;
-      const done = () => (seeked && canplay) && res();
-      clone.addEventListener("seeked", () => { seeked = true; done(); }, { once: true });
-      clone.addEventListener("canplay", () => { canplay = true; done(); }, { once: true });
-      clone.addEventListener("error", () => rej(new Error("Seek/canplay failed")), { once: true });
-    });
+    await Promise.race([
+      (async () => { await once(clone, "seeked"); await once(clone, "canplay"); })(),
+      timeout(4000, "Seek/canplay timeout"),
+    ]);
   } catch (err) {
     console.warn("[Archive] Seek prepare failed:", err);
     new Notice("Could not seek to start time.", 2000);
@@ -597,7 +587,7 @@ function insertClipEmbed(md: MarkdownView, relPath: string, startSec: number, en
     return;
   }
 
-  // --- AudioWorklet-based PCM capture → WAV (no MediaRecorder) ---
+  // 5) WebAudio graph
   const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
   if (!AudioCtx) {
     (this as any)._isClipping = false;
@@ -606,15 +596,13 @@ function insertClipEmbed(md: MarkdownView, relPath: string, startSec: number, en
     try { el.currentTime = e; if (wasPlaying) await el.play(); } catch {}
     return;
   }
-
   const audioCtx: AudioContext = new AudioCtx();
 
-  // Tiny worklet to collect mono PCM
+  // Worklet to collect PCM (WAV fallback)
   const workletCode = `
     class PCMRecorderProcessor extends AudioWorkletProcessor {
       process(inputs) {
-        const input = inputs[0];
-        if (!input || input.length === 0) return true;
+        const input = inputs[0] || [];
         const ch0 = input[0] || new Float32Array(128);
         const frames = ch0.length;
         let mono = new Float32Array(frames);
@@ -630,11 +618,9 @@ function insertClipEmbed(md: MarkdownView, relPath: string, startSec: number, en
     }
     registerProcessor('pcm-recorder', PCMRecorderProcessor);
   `;
-  const workletBlob = new Blob([workletCode], { type: "application/javascript" });
-  const workletURL = URL.createObjectURL(workletBlob);
-  try {
-    await audioCtx.audioWorklet.addModule(workletURL);
-  } catch (err) {
+  const workletURL = URL.createObjectURL(new Blob([workletCode], { type: "application/javascript" }));
+  try { await audioCtx.audioWorklet.addModule(workletURL); }
+  catch (err) {
     URL.revokeObjectURL(workletURL);
     audioCtx.close();
     (this as any)._isClipping = false;
@@ -642,16 +628,22 @@ function insertClipEmbed(md: MarkdownView, relPath: string, startSec: number, en
     new Notice("AudioWorklet failed to initialize.", 2500);
     try { el.currentTime = e; if (wasPlaying) await el.play(); } catch {}
     return;
-  } finally {
-    URL.revokeObjectURL(workletURL);
-  }
+  } finally { URL.revokeObjectURL(workletURL); }
 
   const sourceNode = audioCtx.createMediaElementSource(clone);
   const recorderNode: any = new (window as any).AudioWorkletNode(audioCtx, 'pcm-recorder');
 
-  // Graph: element → worklet (do NOT connect to audioCtx.destination)
-  sourceNode.connect(recorderNode);
+  // WebM path: create a MediaStream from the graph
+  const dest = audioCtx.createMediaStreamDestination();
 
+  // Graph:
+  //   element → worklet (for WAV)
+  //   element → dest    (for WebM/Opus)
+  sourceNode.connect(recorderNode);
+  sourceNode.connect(dest);
+  // (not connecting to audioCtx.destination keeps it silent to speakers)
+
+  // Gather PCM for WAV fallback
   const pcmChunks: Float32Array[] = [];
   let totalSamples = 0;
   recorderNode.port.onmessage = (ev: MessageEvent) => {
@@ -662,7 +654,7 @@ function insertClipEmbed(md: MarkdownView, relPath: string, startSec: number, en
 
   try { if (audioCtx.state === "suspended") await audioCtx.resume(); } catch {}
 
-  // Start playback and wait for real flow
+  // Start hidden playback; wait for flow
   try { await clone.play(); } catch (err) {
     console.warn("[Archive] Hidden playback failed:", err);
     cleanup();
@@ -672,37 +664,84 @@ function insertClipEmbed(md: MarkdownView, relPath: string, startSec: number, en
     try { el.currentTime = e; if (wasPlaying) await el.play(); } catch {}
     return;
   }
-  await new Promise<void>((res) => {
-    const onTU = () => { clone.removeEventListener("timeupdate", onTU); res(); };
-    clone.addEventListener("timeupdate", onTU, { once: true });
-    setTimeout(() => { clone.removeEventListener("timeupdate", onTU); res(); }, 250);
-  });
+  await Promise.race([ once(clone, "timeupdate"), timeout(300) ]);
 
-  // Stop after window
-  let stopTimer: number | undefined = window.setTimeout(() => {
+  // 6) Start WebM/Opus recorder (if supported)
+  const can = (t: string) => (window as any).MediaRecorder?.isTypeSupported?.(t);
+  const webmMime =
+    can("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" :
+    can("audio/webm")            ? "audio/webm" : undefined;
+
+  let webmChunks: BlobPart[] = [];
+  let webmDone: Promise<Blob> | null = null;
+  let mr: MediaRecorder | null = null;
+
+  if (webmMime && (window as any).MediaRecorder) {
+    try {
+      mr = new MediaRecorder(dest.stream, { mimeType: webmMime, audioBitsPerSecond: TARGET_KBPS * 1000 });
+      webmDone = new Promise<Blob>((resolve, reject) => {
+        mr!.ondataavailable = (ev: any) => { if (ev?.data?.size) webmChunks.push(ev.data); };
+        mr!.onerror = (ev: any) => reject(ev?.error instanceof Error ? ev.error : new Error("Recording error"));
+        mr!.onstop = () => resolve(new Blob(webmChunks, { type: webmMime }));
+      });
+      mr.start(); // no timeslice; stop later
+    } catch (err) {
+      console.warn("[Archive] WebM recorder failed, will fallback to WAV:", err);
+      mr = null;
+      webmDone = null;
+    }
+  }
+
+  // 7) Stop after window
+  const stopTimer = window.setTimeout(() => {
     try { clone.pause(); } catch {}
-  }, durationMs + 50);
+    try { mr?.requestData(); } catch {}
+    try { mr?.stop(); } catch {}
+  }, durationMs + 120);
 
-  // Wait slightly past duration to ensure tail is captured
-  await new Promise<void>((res) => setTimeout(res, durationMs + 120));
+  // Wait slightly past duration
+  await timeout(durationMs + 160);
 
+  // Build outputs
   const sampleRate = audioCtx.sampleRate;
   const wavBlob = encodeWAV(pcmChunks, totalSamples, sampleRate);
 
-  if (stopTimer) window.clearTimeout(stopTimer);
+  let finalBlob: Blob;
+  let ext: "webm" | "wav";
+  if (mr && webmDone) {
+    try {
+      const webmBlob = await webmDone;
+      if (webmBlob && webmBlob.size > 0) {
+        finalBlob = webmBlob;
+        ext = "webm";
+      } else {
+        finalBlob = wavBlob;
+        ext = "wav";
+      }
+    } catch {
+      finalBlob = wavBlob;
+      ext = "wav";
+    }
+  } else {
+    finalBlob = wavBlob;
+    ext = "wav";
+  }
+
+  // Cleanup
+  window.clearTimeout(stopTimer);
   cleanup();
   try { clone.pause(); } catch {}
   clone.src = "";
   clone.remove();
   (this as any)._isClipping = false;
 
-  if (!wavBlob || wavBlob.size === 0) {
+  if (!finalBlob || finalBlob.size === 0) {
     new Notice("No audio captured (empty).", 2500);
     try { el.currentTime = e; if (wasPlaying) await el.play(); } catch {}
     return;
   }
 
-  // --- Persist clip to vault ---
+  // 8) Persist
   const activeFile = app.workspace.getActiveFile();
   const baseFolder =
     activeFile?.parent?.path ||
@@ -725,11 +764,11 @@ function insertClipEmbed(md: MarkdownView, relPath: string, startSec: number, en
   const stamp =
     `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}_` +
     `${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}${String(now.getSeconds()).padStart(2, "0")}`;
-  const clipName = `Clip_${stamp}_${Math.floor(s)}-${Math.floor(e)}.wav`;
+  const clipName = `Clip_${stamp}_${Math.floor(s)}-${Math.floor(e)}.${ext}`;
   const clipPath = `${clipsFolder}/${clipName}`;
 
   try {
-    const buf = await wavBlob.arrayBuffer();
+    const buf = await finalBlob.arrayBuffer();
     await (app.vault.adapter as any).writeBinary(clipPath, buf);
   } catch (err) {
     console.warn("[Archive] Write failed:", err);
@@ -738,71 +777,93 @@ function insertClipEmbed(md: MarkdownView, relPath: string, startSec: number, en
     return;
   }
 
-  // --- Insert embed (or copy fallback) ---
+  // 9) Insert embed at cursor (no clipboard unless no editor)
   const rel = `audioclips/${clipName}`;
-  const md = app.workspace.getActiveViewOfType(MarkdownView);
-  if (md?.editor) {
-    insertClipEmbed(md, rel, s, e);
+  const mdView = app.workspace.getActiveViewOfType(MarkdownView)
+             || findAnyMarkdownView(app);
+  // const label = `${formatHMS(s)}–${formatHMS(e)}`;
+  // const embed = `![[${rel}]]  (🎧 ${label})`;
+  const start = Math.max(0, Math.floor(s));
+  const label = `${formatHMS(start)}–${formatHMS(e)}`;
+  const link  = `[${label}](#go2saved-${start})`;
+  const embed = `![[${rel}]]  (🎧 ${link})`;
+
+  if (mdView?.editor) {
+    const ed = mdView.editor;
+    const cur = ed.getCursor();
+    ed.replaceRange(embed + "\n", cur);
+    new Notice(`Saved ${ext.toUpperCase()} clip: ${label} (${Math.round(finalBlob.size/1024)} KB)`, 2000);
   } else {
-    const label = `${formatHMS(s)}–${formatHMS(e)}`;
-    const fallbackEmbed = `![[${rel}]]  (🎧 ${label})`;
-    await navigator.clipboard.writeText(fallbackEmbed.trim());
-    new Notice("Embed copied to clipboard.", 1500);
+    await navigator.clipboard.writeText(embed.trim());
+    new Notice("Embed copied (no editor focused).", 1500);
   }
 
-  // --- Auto-resume main player at end marker ---
+  // Auto-resume main player at end
   try {
     el.currentTime = e;
     if (wasPlaying) await el.play();
   } catch {}
 
-  new Notice(`Saved clip: ${formatHMS(s)}–${formatHMS(e)} (${Math.round(wavBlob.size / 1024)} KB)`, 2000);
-
-  // ===== Helpers =====
+  // ==== helpers ====
   function cleanup() {
     try { sourceNode.disconnect(); } catch {}
     try { recorderNode.disconnect(); } catch {}
+    try { dest.disconnect(); } catch {}
     try { audioCtx.close(); } catch {}
   }
-
   function encodeWAV(chunks: Float32Array[], total: number, sampleRate: number): Blob {
     if (total === 0) return new Blob();
     const pcm16 = new Int16Array(total);
-    let offset = 0;
+    let off = 0;
     for (const f32 of chunks) {
       for (let i = 0; i < f32.length; i++) {
         let s = Math.max(-1, Math.min(1, f32[i]));
-        pcm16[offset++] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        pcm16[off++] = s < 0 ? s * 0x8000 : s * 0x7FFF;
       }
     }
-    const bytesPerSample = 2;
-    const blockAlign = 1 * bytesPerSample;
-    const byteRate = sampleRate * blockAlign;
+    const bytesPerSample = 2, blockAlign = 1 * bytesPerSample, byteRate = sampleRate * blockAlign;
     const dataSize = pcm16.byteLength;
     const buffer = new ArrayBuffer(44 + dataSize);
     const view = new DataView(buffer);
-
-    writeStr(view, 0, "RIFF");
-    view.setUint32(4, 36 + dataSize, true);
-    writeStr(view, 8, "WAVE");
-    writeStr(view, 12, "fmt ");
-    view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true);
-    view.setUint16(22, 1, true);
-    view.setUint32(24, sampleRate, true);
-    view.setUint32(28, byteRate, true);
-    view.setUint16(32, blockAlign, true);
-    view.setUint16(34, 16, true);
-    writeStr(view, 36, "data");
+    writeStr(view, 0, "RIFF"); view.setUint32(4, 36 + dataSize, true);
+    writeStr(view, 8, "WAVE"); writeStr(view, 12, "fmt ");
+    view.setUint32(16, 16, true); view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true); view.setUint32(24, sampleRate, true);
+    view.setUint32(28, byteRate, true); view.setUint16(32, blockAlign, true);
+    view.setUint16(34, 16, true); writeStr(view, 36, "data");
     view.setUint32(40, dataSize, true);
     new Uint8Array(buffer, 44).set(new Uint8Array(pcm16.buffer));
     return new Blob([buffer], { type: "audio/wav" });
   }
-
   function writeStr(view: DataView, offset: number, str: string) {
     for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
   }
+  function once(target: EventTarget, type: string): Promise<void> {
+    return new Promise((res, rej) => {
+      const on = () => { cleanup(); res(); };
+      const onErr = () => { cleanup(); rej(new Error(`${type} error`)); };
+      const cleanup = () => {
+        target.removeEventListener(type, on);
+        target.removeEventListener("error", onErr);
+      };
+      target.addEventListener(type, on, { once: true });
+      target.addEventListener("error", onErr, { once: true });
+    });
+  }
+  function timeout(ms: number, why?: string): Promise<void> {
+    return new Promise((res) => setTimeout(res, ms));
+  }
+  function findAnyMarkdownView(app: App): MarkdownView | null {
+    for (const leaf of app.workspace.getLeavesOfType("markdown")) {
+      const v = leaf.view;
+      if (v && v instanceof (window as any).MarkdownView) return v as MarkdownView;
+      // Fallback duck-typing:
+      if ((v as any)?.editor) return v as any;
+    }
+    return null;
+  }
 };
+
 
 
 // ================== Unified seeker (YT + Archive) ==================
