@@ -330,6 +330,16 @@ new Setting(containerEl)
       })
   );
 
+		//============ BUY ME COFFEE ==================================================
+		const footer = containerEl.createDiv({ cls: "yt-settings-footer" });
+		footer.createEl("div", { text: "Like this plugin? Support my work." });
+		// Buy Me a Coffee
+		const coffeeLink = footer.createEl("a", {
+		text: "Buy me a ☕ coffee",
+		href: "https://www.buymeacoffee.com/YOURUSERNAME", // <-- update your handle
+		});
+		coffeeLink.setAttr("target", "_blank");
+		coffeeLink.addClass("yt-link");
 
 //============ BUY ME COFFEE ==================================================
         const footer = containerEl.createDiv({ cls: "yt-settings-footer" });
