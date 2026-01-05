@@ -13,7 +13,7 @@ export function registerCommands(plugin: YoutubeAnnotatorPlugin) {
 //  =================== COMMAND TO CAPTURE VIDEO TIME TO CLIPBOARD ==========================
   plugin.addCommand({
   id: "capture-video-timestamp",
-  name: "Copy YT-timestamp to clipboard",
+  name: "Copy youtube-timestamp to clipboard",
   callback: async () => {
     const leaf = plugin.app.workspace.getLeavesOfType(VIEW_TYPE_YOUTUBE_ANNOTATOR)?.[0];
     if (!leaf) {
@@ -37,7 +37,7 @@ export function registerCommands(plugin: YoutubeAnnotatorPlugin) {
 //  =================== COMMAND TO CAPTURE VIDEO TIME & INSERT IN CURRENT NOTE ==========================
 plugin.addCommand({
     id: "insert-video-timestamp",
-    name: "Insert YT-timestamp at cursor",
+    name: "Insert youtube-timestamp at cursor",
     callback: async () => {
       const leaf = plugin.app.workspace.getLeavesOfType(VIEW_TYPE_YOUTUBE_ANNOTATOR)?.[0];
       if (!leaf) {
@@ -81,15 +81,22 @@ plugin.addCommand({
   callback: () => {
     const leaf = plugin.app.workspace.getLeavesOfType(VIEW_TYPE_YOUTUBE_ANNOTATOR)?.[0];
     const view = leaf?.view as YouTubeView | undefined;
+
     if (!view?.playerWrapper?.isPlayerReady()) {
       new Notice("Player not ready", 2000);
       return;
     }
-    const state = view.playerWrapper.getState(); // 1=playing, 2=paused
-    if (state === 1) view.playerWrapper.pause();
-    else view.playerWrapper.play();
+
+    const state = view.playerWrapper.getState();
+
+    if (state === YT.PlayerState.PLAYING) {
+      view.playerWrapper.pause();
+    } else {
+      view.playerWrapper.play();
+    }
   },
 });
+
    //=================== CAPTURE REGION FOR SCREENSHOT ==========================  
   
    plugin.addCommand({

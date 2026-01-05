@@ -44,7 +44,7 @@ export class YouTubeView extends ItemView {
   }
 
   getDisplayText(): string {
-    return "YouTube Annotator";
+    return "youtube annotator";
   }
 
   async onOpen(): Promise<void> {
@@ -64,7 +64,7 @@ export class YouTubeView extends ItemView {
   if (this.videoId) {
     await this.renderPlayer();
   } else {
-    new Notice("No videoId passed to YouTubeView.");
+    new Notice("No videoid passed to youtubeview.");
   }
 }
 
@@ -94,7 +94,7 @@ export class YouTubeView extends ItemView {
     container.empty();
 
     if (!this.videoId) {
-      new Notice("No videoId provided");
+      new Notice("No videoid provided");
       return;
     }
 
@@ -239,7 +239,16 @@ this.register(() => stopTick());
 
 // YOUTUBE API Loading
 await loadYouTubeIframeAPI();
-console.log("Loading YouTube Iframe API...");
+try {
+  console.log("Loading Youtube iframe...");
+} catch (err) {
+  console.error("Error loading youtube iframe API:", err);
+  new Notice("Failed to load youtube player API.");
+  return;
+}
+
+
+
 
 await createYouTubePlayer(
   "yt-player",
@@ -251,18 +260,23 @@ await createYouTubePlayer(
     // prime the timer once the player is ready
     updateTimer();
 
-    timestampBtn.removeAttribute("disabled");
-    timestampBtn.onclick = () => {
-      if (!this.playerWrapper?.isPlayerReady()) {
-        new Notice("Player not ready", 2000);
-        return;
-      }
-      const time = Math.floor(this.playerWrapper.getCurrentTime());
-      const link = `[${formatHMS(time)}](#${SAVED_TIME_ANCHOR_PREFIX}${time})`;
-      navigator.clipboard.writeText(link);
+  timestampBtn.removeAttribute("disabled");
+  timestampBtn.onclick = () => {
+  if (!this.playerWrapper?.isPlayerReady()) {
+    new Notice("Player not ready", 2000);
+    return;
+  }
+  const time = Math.floor(this.playerWrapper.getCurrentTime());
+  const link = `[${formatHMS(time)}](#${SAVED_TIME_ANCHOR_PREFIX}${time})`;
+  navigator.clipboard.writeText(link)
+    .then(() => {
       new Notice(`Copied timeStamp: ${link}`, 2000);
-    };
-
+    })
+    .catch((err) => {
+      console.error("Failed to copy to clipboard:", err);
+      new Notice("Copy to clipboard failed.", 2000);
+    });
+};
     // Fetch metadata YouTube Meta data
     const meta = player.getVideoData?.();
     if (meta) {

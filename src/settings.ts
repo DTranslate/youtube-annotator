@@ -4,8 +4,8 @@ import { DateTimestampFormat } from "./utils/date-timestamp";
 import { FolderSuggest } from "./utils/FolderSuggest";
 import { FileSuggest } from "./utils/FileSuggest";
 import { initializeDefaultStructure } from "./utils/initializeDefaultStructure";
-//import { registerTypingPauseResume } from "./utils/typingPauseResume";
-//import { ScreenshotOptions } from "utils/captureScreenshot";
+import { UI_STRINGS } from "./constants";
+
 
 export type ScreenshotFormat = "png" | "jpg"; // add "webp" later if desired
 
@@ -73,7 +73,7 @@ export class YoutubeAnnotatorSettingTab extends PluginSettingTab {
     display(): void {
         const { containerEl } = this;
     containerEl.empty();
-        containerEl.createEl("h2", { text: "YouTube Annotator settings" });
+        containerEl.createEl("h2", { text: UI_STRINGS.settingsHeader });
 ////============ USE DEFAULT FOLDER STRUCTURE BOOLEAN =========================================
     new Setting(containerEl)
     .setName("Default folder structure")
@@ -180,11 +180,13 @@ num.addEventListener("input", async () => {
 num.addEventListener("change", async () => {
   await applyValue(Number(num.value));
 });
-num.addEventListener("keydown", async (e) => {
+num.addEventListener("keydown", (e) => {
   if (e.key === "Enter") {
     e.preventDefault();
-    await applyValue(Number(num.value));
-    (e.target as HTMLInputElement).blur();
+    // Fire and forget; optionally handle errors
+    applyValue(Number(num.value)).then(() => {
+      num.blur();
+    });
   }
 });
 
@@ -209,7 +211,7 @@ num.addEventListener("keydown", async (e) => {
         .setDesc("Folder where your note templates are stored")
         .addText((text) => {
             text
-            .setPlaceholder("e.g. Templates")
+            .setPlaceholder("e.g. templates")
             .setValue(this.plugin.settings.templateFolder)
             .onChange(async (value) => {
                 this.plugin.settings.templateFolder = value;
@@ -236,7 +238,7 @@ num.addEventListener("keydown", async (e) => {
 ////============ ADD PREFIX TO THE NOTE FILENAME ========================================
     new Setting(containerEl)
         .setName("Filename prefix")
-        .setDesc("Prefix for new note filenames (e.g., YT_). Only letters, numbers, underscores, and hyphens are allowed.")
+        .setDesc("Prefix for new note filenames (e.g., yt_). Only letters, numbers, underscores, and hyphens are allowed.")
         .addText((text) => {
             text
             .setPlaceholder("YT_")
@@ -281,7 +283,7 @@ num.addEventListener("keydown", async (e) => {
 
 new Setting(containerEl)
   .setName("Enable screen capture")
-  .setDesc("Use OS snipping tool (Win) or screencapture (mac) and insert at cursor.")
+  .setDesc("Use snipping tool (win) or screencapture (mac) and insert at cursor.")
   .addToggle((toggle) => toggle
     .setValue(this.plugin.settings.enableScreenCapture)
     .onChange(async (value) => {

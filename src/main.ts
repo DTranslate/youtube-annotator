@@ -37,7 +37,9 @@ public async activateView(videoId?: string, opts: { focus?: boolean } = {}) {
   });
 
   // Only reveal if you explicitly want to focus the player
-  if (focus) this.app.workspace.revealLeaf(leaf);
+  if (focus){
+    void this.app.workspace.revealLeaf(leaf);
+  } 
 }
 // ⬇️ Track the last-focused Markdown editor
   lastMdLeaf: WorkspaceLeaf | null = null;
@@ -89,8 +91,9 @@ addIcon(
    </svg>`
 );    
 
-  this.addRibbonIcon("yt-annotator", "Open YouTube Annotator", () => {
-    this.openModal();
+
+  this.addRibbonIcon("yt-annotator", "Open youtube annotator", () => {
+    this.openModal.bind(this)();
   });
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
 
@@ -179,41 +182,45 @@ addIcon(
   async openModal() {
   const modal = new YoutubePromptModal(
     this.app,
-    async (
-      videoId: string,
-      originalUrl: string,
-      videoAuthor: string,
-      videoTitle: string
-    ) => {
-      //console.log("Video ID from modal:", videoId);
-
-      // Step 1: Create note
-      try {
-        await createNoteFromTemplate(
-          this.app,
-          this.settings,
-          videoAuthor,
-          videoTitle,
-          videoId,
-          originalUrl
-        );
-        //console.log("Note created successfully");
-      } catch (err) {
-        console.error("Failed to create note:", err);
-        new Notice("Note creation failed. Check template path or folder.");
-      }
-
-      // Step 2: Detach any existing views
-      const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_YOUTUBE_ANNOTATOR);
-      for (const leaf of leaves) {
-        await leaf.detach();
-      }
-
-      await this.activateView(videoId);
-    }
+    this.handleYouTubeModalSubmit.bind(this)
   );
-
   modal.open();
+}
+
+// Extracted handler for modal submission
+private async handleYouTubeModalSubmit(
+  videoId: string,
+  originalUrl: string,
+  videoAuthor: string,
+  videoTitle: string
+) {
+  try {
+    await createNoteFromTemplate(
+      this.app,
+      this.settings,
+      videoAuthor,
+      videoTitle,
+      videoId,
+      originalUrl
+    );
+    // Optional: Notify the user of success
+    new Notice("Note created successfully");
+  } catch (err) {
+    console.error("Failed to create note:", err);
+    new Notice("Note creation failed. Check template path or folder.");
+    return;
+  }
+
+  await this.detachAllYouTubeAnnotatorLeaves();
+  await this.activateView(videoId);
+}
+
+// Utility method to detach all annotator leaves
+private async detachAllYouTubeAnnotatorLeaves() {
+  const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_YOUTUBE_ANNOTATOR);
+  for (const leaf of leaves) {
+    await leaf.detach();
+  }
 }
 
 //===================== SAVE =======================

@@ -28,8 +28,15 @@ function readingClickHandler(app: App) {
     if (!mv || mv.getMode() !== "preview") return; // only in Reading mode
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
 
-    const a = (event.target as HTMLElement)?.closest?.("a") as HTMLAnchorElement | null;
-    if (!a) return;
+   let a: HTMLAnchorElement | null = null;
+  const target = event.target;
+  if (target instanceof HTMLElement) {
+    const anchor = target.closest("a");
+    if (anchor instanceof HTMLAnchorElement) {
+      a = anchor;
+    }
+  }
+  if (!a) return;
 
     const href = (a.getAttribute("href") || a.getAttribute("data-href") || "").trim();
     if (!href) return;
@@ -66,33 +73,66 @@ function readingClickHandler(app: App) {
 
       const right = app.workspace.getRightLeaf(false) || app.workspace.getRightLeaf(true);
       if (!right) return;
-      await right.setViewState({
-        type: VIEW_TYPE_YOUTUBE_ANNOTATOR,
-        state: { videoId },
-        active: true,
-      });
-      app.workspace.revealLeaf(right);
-      new Notice("Opened video in side view", 2000);
-      return;
+      try {
+        await right.setViewState({
+          type: VIEW_TYPE_YOUTUBE_ANNOTATOR,
+          state: { videoId },
+          active: true,
+        });
+      } catch (e) {
+        console.error("YT Annotator: failed to open side view", e);
+        return;
+      }
     }
   };
 }
 
 // ---- Live Preview helpers
+// function pickHrefFromDom(e: MouseEvent): string | null {
+//   const path = (e.composedPath?.() ?? []) as HTMLElement[];
+//   for (const node of path) {
+//     if (!(node instanceof HTMLElement)) continue;
+//     if (node.tagName === "A") {
+//       const h = node.getAttribute("href") || node.getAttribute("data-href");
+//       if (h) return h.trim();
+//     }
+//     const dh = node.getAttribute?.("data-href");
+//     if (dh) return dh.trim();
+//   }
+//   const a = (e.target as HTMLElement)?.closest?.("a") as HTMLAnchorElement | null;
+//   return a ? (a.getAttribute("href") || a.getAttribute("data-href") || "").trim() : null;
+// }
+
 function pickHrefFromDom(e: MouseEvent): string | null {
-  const path = (e.composedPath?.() ?? []) as HTMLElement[];
+  // 1) Walk the composed path first (best for nested elements / shadow DOM)
+  const path = e.composedPath?.() ?? [];
   for (const node of path) {
     if (!(node instanceof HTMLElement)) continue;
-    if (node.tagName === "A") {
-      const h = node.getAttribute("href") || node.getAttribute("data-href");
-      if (h) return h.trim();
+
+    // If the node itself is an <a>, read href/data-href
+    if (node instanceof HTMLAnchorElement) {
+      const raw = node.getAttribute("href") ?? node.getAttribute("data-href");
+      if (raw) return raw.trim();
     }
-    const dh = node.getAttribute?.("data-href");
-    if (dh) return dh.trim();
+
+    // Otherwise, allow any element to expose a data-href
+    const dataHref = node.getAttribute("data-href");
+    if (dataHref) return dataHref.trim();
   }
-  const a = (e.target as HTMLElement)?.closest?.("a") as HTMLAnchorElement | null;
-  return a ? (a.getAttribute("href") || a.getAttribute("data-href") || "").trim() : null;
+
+  // 2) Fallback: closest <a> from the event target (no unsafe casts)
+  const anchorEl =
+    e.target instanceof HTMLElement ? e.target.closest("a") : null;
+
+  const anchor =
+    anchorEl instanceof HTMLAnchorElement ? anchorEl : null;
+
+  if (!anchor) return null;
+
+  const raw = anchor.getAttribute("href") ?? anchor.getAttribute("data-href");
+  return raw ? raw.trim() : null;
 }
+
 
 function pickSecondsFromText(e: MouseEvent, view: EditorView, prefix: string): number | null {
   const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });

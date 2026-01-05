@@ -60,6 +60,7 @@ function readingClickHandler(app: App) {
     event.stopImmediatePropagation?.();
 
     await openYouTubeLinkInSideView(app, href, { attachToFrontmatter: false });
+    
   };
 }
 
@@ -83,7 +84,7 @@ function livePreviewHandler(app: App) {
     e.stopImmediatePropagation?.();
 
     // Open & seek
-    openYouTubeLinkInSideView(app, href, { attachToFrontmatter: false });
+    void openYouTubeLinkInSideView(app, href, { attachToFrontmatter: false });
     return true;
   };
 }
@@ -91,7 +92,12 @@ function livePreviewHandler(app: App) {
 export function registerYouTubeLinkHandlers(app: App, register: (cb: () => void) => void) {
   // Reading mode – capture phase to beat default link nav
   const reading = readingClickHandler(app);
-  app.workspace.containerEl.addEventListener("click", reading, true);
+  //app.workspace.containerEl.addEventListener("click", reading, true);
+    app.workspace.containerEl.addEventListener(
+    "click",
+    (e) => { void reading(e); },
+    { capture: true }
+  );
   register(() => app.workspace.containerEl.removeEventListener("click", reading, true));
 
   // Live Preview – catch early (mousedown) and also click/auxclick

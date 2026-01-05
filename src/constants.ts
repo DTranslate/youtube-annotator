@@ -2,6 +2,23 @@
 constants.ts define Any constants you want to reuse globally
 */
 // src/constants/constants.ts
+export const UI_STRINGS = {
+  // Settings
+  settingsHeader: "Youtube annotator settings",
+  settingsDescription: "Configure how youtube annotator behaves.",
+
+  // Notices
+  playerNotReady: "Player not ready",
+  copiedTimestamp: "Copied timestamp",
+  clipboardFailed: "Could not copy to clipboard",
+
+  // Buttons
+  captureTimestamp: "Capture timestamp",
+  closePlayer: "Close player",
+} as const;
+
+
+
 export const VIEW_STATE_KEY = "youtube-view-state"; // Save last open view or tab
 
 //  icons consistently in ribbon or status bar:

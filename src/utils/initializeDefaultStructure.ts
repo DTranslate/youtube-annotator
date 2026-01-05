@@ -43,7 +43,7 @@ export async function initializeDefaultStructure(
 }
 
 // Load from local .md file in /src (bundled)
-async function fetchDefaultTemplate(): Promise<string> {
+function fetchDefaultTemplate(): string {
   return `---
 videoAuthor: "{{videoAuthor}}"
 videoTitle: "{{videoTitle}}"

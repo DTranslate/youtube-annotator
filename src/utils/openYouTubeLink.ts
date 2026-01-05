@@ -37,7 +37,6 @@ function extractStartSecondsFromUrl(href: string): number | null {
 }
 
 /**
- * Open a YouTube link in the right-side YouTube Annotator view.
  * Optionally attach videoId/originalUrl to current note frontmatter (off by default).
  */
 export async function openYouTubeLinkInSideView(
@@ -57,7 +56,7 @@ export async function openYouTubeLinkInSideView(
     state: { videoId },
     active: true,
   });
-  app.workspace.revealLeaf(right);
+  //app.workspace.revealLeaf(right);
 
   // Optionally attach to current note's YAML
   if (opts?.attachToFrontmatter) {

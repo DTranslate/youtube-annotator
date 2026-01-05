@@ -158,7 +158,7 @@ export async function captureScreenshot(app: App, opts: ScreenshotOptions): Prom
       // pass through your reuseLastRegion flag (optional)
       await captureOnWindows(app, relPath, opts.format, opts.reuseLastRegion ?? false);
     } else {
-      new Notice("Screenshot: unsupported desktop OS.", 2500);
+      new Notice("Screenshot: unsupported desktop.", 2500);
       return;
     }
 
@@ -181,9 +181,16 @@ async function captureOnMac(absPath: string, format: ImageFormat) {
   if (!fs.existsSync(absPath)) throw new Error("Screenshot not created.");
 }
 
-function execFileAsync(cmd: string, args: string[]): Promise<void> {
+export function execFileAsync(cmd: string, args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
-    cp.execFile(cmd, args, (err: unknown) => (err ? reject(err) : resolve()));
+    cp.execFile(cmd, args, (err: Error | null) => {
+      if (err) {
+        // Ensure the rejection reason is an Error (it already is, but keep it strict)
+        reject(err instanceof Error ? err : new Error(String(err)));
+        return;
+      }
+      resolve();
+    });
   });
 }
 
@@ -226,8 +233,15 @@ async function captureOnWindows(
   if (format === "png") buffer = img.toPNG();
   else if (format === "jpg") buffer = img.toJPEG(90);
   else buffer = img.toPNG(); // webp not available directly from Electron clipboard
-
-  await app.vault.adapter.writeBinary(relPath, bufferToArrayBuffer(buffer) as ArrayBuffer);
+  
+  // Ensure bufferToArrayBuffer always returns ArrayBuffer
+const arrayBuffer = bufferToArrayBuffer(buffer);
+  try {
+    await app.vault.adapter.writeBinary(relPath, arrayBuffer);
+  } catch (err) {
+    console.error("Failed to write screenshot to vault:", err);
+    new Notice("Failed to save screenshot. See console for details.", 2500);
+  }
 
   // clear the clipboard now for fresh clean clip
   if (!reuseLastRegion) {
