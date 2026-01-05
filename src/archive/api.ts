@@ -1,5 +1,21 @@
 import type { ArchiveMetadata } from "./types";
 
+type ArchiveFile = ArchiveMetadata["files"][number];
+
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === "object" && x !== null;
+}
+
+function isArchiveApiResponse(x: unknown): x is {
+  dir?: unknown;
+  files: ArchiveFile[];
+  metadata?: unknown;
+} {
+  if (!isRecord(x)) return false;
+  if (!("files" in x) || !Array.isArray(x.files)) return false;
+  return true;
+}
+
 // Minimal fetch wrapper with friendly errors + size normalization
 export async function fetchArchiveMetadata(identifier: string): Promise<ArchiveMetadata> {
   const url = `https://archive.org/metadata/${encodeURIComponent(identifier)}`;
@@ -7,7 +23,7 @@ export async function fetchArchiveMetadata(identifier: string): Promise<ArchiveM
   let resp: Response;
   try {
     resp = await fetch(url, { method: "GET" });
-  } catch (e) {
+  } catch {
     throw new Error(`Archive.org: network error while loading metadata for "${identifier}"`);
   }
 
@@ -16,25 +32,31 @@ export async function fetchArchiveMetadata(identifier: string): Promise<ArchiveM
     throw new Error(`Archive.org: ${resp.status} while loading "${identifier}"`);
   }
 
-  const data = await resp.json();
+  const data: unknown = await resp.json();
 
-  if (!data || !Array.isArray(data.files)) {
+  if (!isArchiveApiResponse(data)) {
     throw new Error(`Archive.org: unexpected metadata format for "${identifier}"`);
   }
 
-  // Normalize sizes to numbers
-  for (const f of data.files) {
-    if (typeof (f as any).size === "string") {
-      const n = Number((f as any).size);
-      if (!Number.isNaN(n)) (f as any).size = n;
+  const dir = typeof data.dir === "string" ? data.dir : "";
+  const metadata = isRecord(data.metadata) ? data.metadata : {};
+
+  const files: ArchiveFile[] = data.files;
+
+  // Normalize sizes to numbers (no any)
+  for (const f of files) {
+    // size may arrive as string from API; treat as unknown then normalize
+    const sizeVal = (f as { size?: unknown }).size;
+
+    if (typeof sizeVal === "string") {
+      const n = Number(sizeVal);
+      if (!Number.isNaN(n)) {
+        (f as { size?: number }).size = n;
+      }
     }
   }
 
-  return {
-    dir: data.dir ?? "",
-    files: data.files,
-    metadata: data.metadata ?? {},
-  };
+  return { dir, files, metadata };
 }
 
 // Quick helper to extract identifier from common URLs

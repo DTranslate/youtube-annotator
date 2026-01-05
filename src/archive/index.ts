@@ -48,7 +48,8 @@ export async function resolveArchiveMedia(urlOrId: string, startSeconds?: number
   let total = 0;
   audio.forEach((f, i) => {
     const name = f.name;
-    const rawLen = (f as any).length as string | undefined; // Archive often provides "length"
+    const rawLen =
+    typeof (f as { length?: unknown }).length === "string" ? (f as { length?: string }).length : undefined; // Archive often provides "length"
     const seconds = parseHMS(rawLen);
     total += seconds;
     tracks.push({
@@ -61,7 +62,7 @@ export async function resolveArchiveMedia(urlOrId: string, startSeconds?: number
   });
 
   // High-level item metadata
-  const md = (meta.metadata ?? {}) as Record<string, any>;
+  const md = (meta.metadata ?? {}) as Record<string, string>;
   const info: ArchiveInfo = {
     title: md.title,
     creator: md.creator,

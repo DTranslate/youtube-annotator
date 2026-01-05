@@ -19,9 +19,6 @@ export class PlayerWrapper {
   }
 
   private bindEvents() {
-    // Wrap native handlers and delegate
-    const oldOnReady = this.player.getIframe().onload;
-
     this.player.addEventListener("onReady", () => {
       this.isReady = true;
       //console.log("Player ready (PlayerWrapper)");

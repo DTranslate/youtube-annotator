@@ -3,7 +3,6 @@
 
 import { Notice } from "obsidian";
 import { YoutubeAnnotatorSettings } from "../settings";
-import { Script } from "vm"
 
 export async function createYouTubePlayer(
   elementId: string | HTMLElement,
@@ -24,25 +23,18 @@ export async function createYouTubePlayer(
       events: {
         onReady: (event) => {
           new Notice("YouTube player ready");
-          if (onReady) onReady(event.target);
+          onReady?.(event.target);
           resolve(event.target);
         },
         onStateChange: (event) => {
-          if (onStateChange) onStateChange(event.data);
+          onStateChange?.(event.data);
         },
       },
     };
 
-    const player = new YT.Player(
-  typeof elementId === "string" ? elementId : elementId.id,
-  options
-);
-
+    new YT.Player(
+      typeof elementId === "string" ? elementId : elementId.id,
+      options
+    );
   });
-  
 }
-
-
-
-
-// Ends here createYouTubePlayer.ts

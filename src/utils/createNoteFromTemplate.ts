@@ -1,5 +1,7 @@
-// utils/createNoteFromTemplate.ts is used for creating YT notes based on template
-import { App, Notice, TFile, normalizePath,moment } from "obsidian";
+// utils/createNoteFromTemplate.ts
+// used for creating YT notes based on template
+
+import { App, Notice, TFile, normalizePath } from "obsidian";
 import { YoutubeAnnotatorSettings } from "../settings";
 import { generateNoteFilename } from "../utils/generateFilenames";
 import { generateDateTimestamp } from "./date-timestamp";
@@ -8,14 +10,14 @@ export async function createNoteFromTemplate(
   app: App,
   settings: YoutubeAnnotatorSettings,
   videoAuthor: string,
-  videoTitle:string,
+  videoTitle: string,
   videoId: string,
   originalUrl: string
 ): Promise<void> {
   const { fullPath: newNotePath, filename } = generateNoteFilename(settings);
   const templatePath = normalizePath(settings.templateFile);
   const formattedDate = generateDateTimestamp(settings.timestampFormat);
-  
+
   let content = "";
 
   try {
@@ -26,22 +28,21 @@ export async function createNoteFromTemplate(
       new Notice("Template file not found. Check path in settings.");
       return;
     }
-  } catch (err) {
-    //console.warn("Error reading template file:", err);
+  } catch {
+    // template read failure; already handled by Notice
     new Notice("Could not read template file. See console for details.");
     return;
   }
 
-  // Replace placeholders 
+  // Replace placeholders
   content = content
-    .replace(/{{videoAuthor}}/g, videoAuthor)  
+    .replace(/{{videoAuthor}}/g, videoAuthor)
     .replace(/{{videoTitle}}/g, videoTitle)
     .replace(/{{videoId}}/g, videoId)
-    .replace(/{{originalUrl}}/g, originalUrl)  
+    .replace(/{{originalUrl}}/g, originalUrl)
     .replace(/{{filename}}/g, filename)
     .replace(/{{date}}/g, formattedDate);
 
-  
   try {
     // Create the note
     await app.vault.create(newNotePath, content);
@@ -53,8 +54,8 @@ export async function createNoteFromTemplate(
     } else {
       new Notice("Note created but could not open it.");
     }
-  } catch (err) {
-    //console.error("Failed to create note:", err);
+  } catch {
+    // create/open failure; user-facing Notice is enough
     new Notice("Failed to create note. See console for details.");
   }
-} // utils/createNoteFromTemplate.ts 
+}

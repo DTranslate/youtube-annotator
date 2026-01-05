@@ -82,7 +82,7 @@ function livePreviewHandler(app: App) {
 
     e.preventDefault();
     e.stopPropagation();
-    (e as any).stopImmediatePropagation?.();
+    e.stopImmediatePropagation?.();
 
     // Open & seek
     openYouTubeLinkInSideView(app, href, { attachToFrontmatter: false });

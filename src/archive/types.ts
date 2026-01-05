@@ -12,7 +12,7 @@ export interface ArchiveFile {
 export interface ArchiveMetadata {
   dir: string;            // e.g., "/details/<identifier>"
   files: ArchiveFile[];
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface ArchiveResolution {

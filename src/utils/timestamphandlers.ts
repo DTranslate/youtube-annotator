@@ -159,7 +159,7 @@ function livePreviewHandler(app: App) {
       const videoId = extractVideoIdFromUrl(href);
       if (!videoId) return true;
 
-      let right = app.workspace.getRightLeaf(false) || app.workspace.getRightLeaf(true);
+      const right = app.workspace.getRightLeaf(false) || app.workspace.getRightLeaf(true);
       if (!right) return true;
       right.setViewState({
         type: VIEW_TYPE_YOUTUBE_ANNOTATOR,
